@@ -54,6 +54,33 @@ void main() {
     expect(_copyButton().disabled, isTrue);
   });
 
+  testComponents('output switches preserve unresolved and selected column choices', (tester) async {
+    String? copied;
+    tester.pumpComponent(TableApp(copyText: (text) async => copied = text));
+    await _enter(tester, 'A\n\nB\n\nC\n\n1\n\n2\n\n3');
+    await tester.click(_button('output-markdown'));
+    expect(find.text('Columns'), findsOneComponent);
+    expect(_copyButton().disabled, isTrue);
+
+    await tester.click(find.componentWithText(button, '3'));
+    expect(find.text('2 rows · 3 columns'), findsOneComponent);
+    await tester.click(_button('copy-output'));
+    expect(copied, '| A   | B   | C   |\n| --- | --- | --- |\n| 1   | 2   | 3   |');
+
+    await tester.click(_button('output-slack'));
+    expect(find.text('Table preserved.'), findsNothing);
+    expect(find.text('Columns'), findsOneComponent);
+    final selected = find.componentWithText(button, '3').evaluate().single.component as button;
+    expect(selected.attributes?['aria-pressed'], 'true');
+    await tester.click(_button('copy-output'));
+    expect(copied, 'A\tB\tC\n1\t2\t3');
+
+    await tester.click(find.componentWithText(button, '2'));
+    expect(find.text('3 rows · 2 columns'), findsOneComponent);
+    await tester.click(_button('copy-output'));
+    expect(copied, 'A\tB\nC\t1\n2\t3');
+  });
+
   testComponents('invalid input clears stale output and disables copy', (tester) async {
     tester.pumpComponent(TableApp(copyText: (_) async {}));
     await _enter(tester, 'A,B\n1,2');
@@ -120,6 +147,73 @@ void main() {
     expect(find.text('Table preserved.'), findsNothing);
     expect(_copyButton().disabled, isFalse);
     expect(find.text('3'), findsOneComponent);
+  });
+
+  for (final oldCopyFails in [false, true]) {
+    testComponents('obsolete copy (fails: $oldCopyFails) cannot change a newer copy', (
+      tester,
+    ) async {
+      final oldCopy = Completer<void>();
+      final newCopy = Completer<void>();
+      final copied = <String>[];
+      tester.pumpComponent(
+        TableApp(
+          copyText: (text) {
+            copied.add(text);
+            return copied.length == 1 ? oldCopy.future : newCopy.future;
+          },
+        ),
+      );
+      await _enter(tester, 'A,B\n1,2');
+      await tester.click(_button('copy-output'));
+      await tester.click(_button('output-markdown'));
+      expect(_copyButton().disabled, isFalse);
+      await tester.click(_button('copy-output'));
+      expect(_copyButton().disabled, isTrue);
+
+      if (oldCopyFails) {
+        oldCopy.completeError(StateError('old copy denied'));
+      } else {
+        oldCopy.complete();
+      }
+      await tester.pump();
+      expect(_copyButton().disabled, isTrue);
+      expect(find.text('Table preserved.'), findsNothing);
+      expect(find.textContaining('Copy unavailable'), findsNothing);
+
+      newCopy.complete();
+      await tester.pump();
+      expect(_copyButton().disabled, isFalse);
+      expect(find.text('Table preserved.'), findsOneComponent);
+      expect(copied, ['A\tB\n1\t2', '| A   | B   |\n| --- | --- |\n| 1   | 2   |']);
+    });
+  }
+
+  testComponents('manual copy remains available during a retry and clears on success', (
+    tester,
+  ) async {
+    final retry = Completer<void>();
+    var attempts = 0;
+    tester.pumpComponent(
+      TableApp(
+        copyText: (_) {
+          if (++attempts == 1) throw StateError('denied');
+          return retry.future;
+        },
+      ),
+    );
+    await _enter(tester, 'A,B\n1,2');
+    await tester.click(_button('copy-output'));
+    await tester.click(_button('copy-output'));
+    expect(_copyButton().disabled, isTrue);
+    expect(find.text('A\tB\n1\t2'), findsOneComponent);
+    expect(find.textContaining('Copy unavailable'), findsOneComponent);
+
+    retry.complete();
+    await tester.pump();
+    expect(find.textContaining('Copy unavailable'), findsNothing);
+    expect(find.tag('table'), findsOneComponent);
+    expect(find.text('Table preserved.'), findsOneComponent);
   });
 
   testComponents('cell markup stays text', (tester) async {

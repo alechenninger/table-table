@@ -2,6 +2,8 @@ import 'package:jaspr/dom.dart';
 import 'package:jaspr/jaspr.dart';
 import 'package:slack_table/slack_table.dart' as tables;
 
+import 'conversion.dart';
+
 class TableApp extends StatefulComponent {
   final Future<void> Function(String) copyText;
 
@@ -9,6 +11,18 @@ class TableApp extends StatefulComponent {
 
   @override
   State<TableApp> createState() => _TableAppState();
+}
+
+enum _CopyStatus {
+  idle,
+  copying,
+  copied,
+  failed,
+  retrying;
+
+  bool get isPending => this == copying || this == retrying;
+
+  bool get showFallback => this == failed || this == retrying;
 }
 
 class _TableAppState extends State<TableApp> {
@@ -27,225 +41,291 @@ class _TableAppState extends State<TableApp> {
   String _inputFormat = 'auto';
   String _outputFormat = 'slack';
   int? _columns;
-  List<int> _candidates = [];
-  tables.Table? _table;
-  String _output = '';
-  String? _error;
-  bool _copying = false;
-  bool _copied = false;
-  bool _copyFailed = false;
+  Conversion _conversion = const EmptyConversion();
+  _CopyStatus _copyStatus = _CopyStatus.idle;
   int _revision = 0;
   int _inputKey = 0;
 
   @override
   Component build(BuildContext context) {
     return main_(classes: 'app', [
-      header([
-        p(classes: 'wordmark', [
-          img(src: 'favicon.svg', alt: '', width: 20, height: 20),
-          .text('table-table'),
-        ]),
-        h1([.text('For the love of tables.')]),
-        p(classes: 'intro', [
-          .text('Tables are everywhere. Keep them tables, wherever you paste.'),
-        ]),
-      ]),
+      _buildHeader(),
       hr(classes: 'hero-divider'),
       div(classes: 'workspace', [
-        section(
-          classes: 'pane input-pane',
-          attributes: {'aria-labelledby': 'input-label'},
+        _buildInputPane(),
+        _buildOutputPane(),
+      ]),
+      _buildAbout(),
+    ]);
+  }
+
+  tables.Table? get _table => switch (_conversion) {
+    ReadyConversion(:final table) => table,
+    _ => null,
+  };
+
+  String get _output => switch (_conversion) {
+    ReadyConversion(:final output) => output,
+    _ => '',
+  };
+
+  List<int> get _candidates => switch (_conversion) {
+    AmbiguousConversion(:final candidates) || ReadyConversion(:final candidates) => candidates,
+    _ => const [],
+  };
+
+  bool get _hasError => _conversion is InvalidConversion;
+
+  Component _buildHeader() {
+    return header([
+      p(classes: 'wordmark', [
+        img(src: 'favicon.svg', alt: '', width: 20, height: 20),
+        .text('table-table'),
+      ]),
+      h1([.text('For the love of tables.')]),
+      p(classes: 'intro', [
+        .text('Tables are everywhere. Keep them tables, wherever you paste.'),
+      ]),
+    ]);
+  }
+
+  Component _buildInputPane() {
+    return section(
+      classes: 'pane input-pane',
+      attributes: {'aria-labelledby': 'input-label'},
+      [
+        _buildInputHeading(),
+        _buildInputEditor(),
+        _buildInputFeedback(),
+        _buildInputActions(),
+      ],
+    );
+  }
+
+  Component _buildInputHeading() {
+    final table = _table;
+    return div(classes: 'pane-heading', [
+      div(classes: 'input-heading', [
+        label(id: 'input-label', htmlFor: 'table-input', [.text('Input')]),
+        span(
+          classes: 'detected-format',
+          attributes: {'role': 'status', 'aria-atomic': 'true'},
           [
-            div(classes: 'pane-heading', [
-              div(classes: 'input-heading', [
-                label(id: 'input-label', htmlFor: 'table-input', [.text('Input')]),
-                span(
-                  classes: 'detected-format',
-                  attributes: {'role': 'status', 'aria-atomic': 'true'},
-                  [
-                    if (_table != null && _inputFormat == 'auto') ...[
-                      span(
-                        classes: 'detection-check',
-                        attributes: {'aria-hidden': 'true'},
-                        [
-                          .text('✓'),
-                        ],
-                      ),
-                      span([.text('${_formats[_table!.sourceFormat]} detected')]),
-                    ],
-                  ],
-                ),
-              ]),
-              select(
-                id: 'input-format',
-                classes: 'select select-sm input-format',
-                value: _inputFormat,
-                attributes: {'aria-label': 'Input format'},
-                onChange: (values) => _changeInputFormat(values.single),
+            if (table != null && _inputFormat == 'auto') ...[
+              span(
+                classes: 'detection-check',
+                attributes: {'aria-hidden': 'true'},
                 [
-                  for (final entry in _formats.entries)
-                    option(value: entry.key, [.text(entry.value)]),
+                  .text('✓'),
                 ],
               ),
-            ]),
-            textarea(
-              key: ValueKey(_inputKey),
-              id: 'table-input',
-              classes: _error == null
-                  ? 'textarea table-input'
-                  : 'textarea textarea-error table-input',
-              placeholder: 'Paste something table-ish…',
-              spellCheck: SpellCheck.isFalse,
-              attributes: {
-                'wrap': 'off',
-                'aria-describedby': 'input-feedback',
-                if (_error != null) 'aria-invalid': 'true',
-                'autocapitalize': 'off',
-                'autocorrect': 'off',
-              },
-              onInput: _changeInput,
-              [.text(_input)],
-            ),
-            div(
-              id: 'input-feedback',
-              classes: 'input-feedback',
-              attributes: {'aria-live': 'polite'},
-              [
-                if (_candidates.isNotEmpty)
-                  div(classes: 'column-choice', [
-                    span(id: 'columns-label', [.text('Columns')]),
-                    div(
-                      classes: 'column-buttons',
-                      attributes: {'role': 'group', 'aria-labelledby': 'columns-label'},
-                      [
-                        for (final count in _candidates)
-                          button(
-                            classes: _columns == count
-                                ? 'btn btn-sm btn-primary btn-soft'
-                                : 'btn btn-sm btn-outline',
-                            attributes: {'aria-pressed': '${_columns == count}'},
-                            onClick: () => _chooseColumns(count),
-                            [.text('$count')],
-                          ),
-                      ],
-                    ),
-                  ])
-                else if (_error != null)
-                  p(classes: 'error', [.text(_error!)]),
-              ],
-            ),
-            div(classes: 'pane-footer', [
-              button(classes: 'btn btn-sm btn-outline', onClick: _loadExample, [
-                .text('Try an example'),
-              ]),
-              if (_input.isNotEmpty)
-                button(classes: 'btn btn-sm btn-outline', onClick: _clear, [.text('Clear')]),
-            ]),
-          ],
-        ),
-        section(
-          classes: 'pane output-pane',
-          attributes: {'aria-label': 'Output'},
-          [
-            div(classes: 'pane-heading', [
-              div(
-                classes: 'join output-format',
-                attributes: {'role': 'group', 'aria-label': 'Output format'},
-                [
-                  for (final (value, title) in [('slack', 'Slack'), ('markdown', 'Markdown')])
-                    button(
-                      id: 'output-$value',
-                      classes: 'join-item btn btn-sm btn-ghost',
-                      attributes: {'aria-pressed': '${_outputFormat == value}'},
-                      onClick: () => _changeOutputFormat(value),
-                      [.text(title)],
-                    ),
-                ],
-              ),
-            ]),
-            div(classes: 'preview-toolbar', [
-              span(classes: 'table-size', [
-                if (_table != null)
-                  .text(
-                    '${_table!.rows.length} ${_table!.rows.length == 1 ? 'row' : 'rows'}'
-                    ' · ${_table!.rows.first.length} columns',
-                  ),
-              ]),
-              button(
-                id: 'copy-output',
-                classes: 'btn btn-sm btn-primary copy-button',
-                disabled: _output.isEmpty || _copying,
-                onClick: _copy,
-                [.text(_copied ? 'Table preserved.' : 'Copy')],
-              ),
-            ]),
-            div(classes: 'preview', [
-              if (_table == null)
-                p(classes: 'empty-preview', [
-                  .text('Your table will appear here, columns and all.'),
-                ])
-              else if (_copyFailed)
-                textarea(
-                  key: ValueKey(_output),
-                  id: 'copy-fallback',
-                  classes: 'textarea table-input',
-                  readonly: true,
-                  spellCheck: SpellCheck.isFalse,
-                  attributes: {
-                    'wrap': 'off',
-                    'aria-label': 'Output text',
-                    'aria-describedby': 'copy-feedback',
-                  },
-                  [.text(_output)],
-                )
-              else if (_outputFormat == 'markdown')
-                pre(
-                  attributes: {'tabindex': '0', 'aria-label': 'Markdown output'},
-                  [.text(_output)],
-                )
-              else
-                div(
-                  classes: 'table-scroll',
-                  attributes: {'tabindex': '0', 'aria-label': 'Slack table preview'},
-                  [
-                    table(classes: 'table', [
-                      thead([
-                        tr([
-                          for (final cell in _table!.rows.first) th(scope: 'col', [.text(cell)]),
-                        ]),
-                      ]),
-                      tbody([
-                        for (final row in _table!.rows.skip(1))
-                          tr([
-                            for (final cell in row) td([.text(cell)]),
-                          ]),
-                      ]),
-                    ]),
-                  ],
-                ),
-            ]),
-            div(
-              id: 'copy-feedback',
-              classes: 'copy-feedback',
-              attributes: {'role': 'status'},
-              [
-                if (_copyFailed)
-                  p(classes: 'error', [.text('Copy unavailable. Select the text above and copy.')]),
-                if (_copied)
-                  span(classes: 'sr-only', [.text('Table preserved. Copied to clipboard.')]),
-              ],
-            ),
+              span([.text('${_formats[table.sourceFormat]} detected')]),
+            ],
           ],
         ),
       ]),
-      details(classes: 'about', [
-        summary([.text('Why tables?')]),
-        p([
+      select(
+        id: 'input-format',
+        classes: 'select select-sm input-format',
+        value: _inputFormat,
+        attributes: {'aria-label': 'Input format'},
+        onChange: (values) => _changeInputFormat(values.single),
+        [
+          for (final entry in _formats.entries) option(value: entry.key, [.text(entry.value)]),
+        ],
+      ),
+    ]);
+  }
+
+  Component _buildInputEditor() {
+    return textarea(
+      key: ValueKey(_inputKey),
+      id: 'table-input',
+      classes: _hasError ? 'textarea textarea-error table-input' : 'textarea table-input',
+      placeholder: 'Paste something table-ish…',
+      spellCheck: SpellCheck.isFalse,
+      attributes: {
+        'wrap': 'off',
+        'aria-describedby': 'input-feedback',
+        if (_hasError) 'aria-invalid': 'true',
+        'autocapitalize': 'off',
+        'autocorrect': 'off',
+      },
+      onInput: _changeInput,
+      [.text(_input)],
+    );
+  }
+
+  Component _buildInputFeedback() {
+    return div(
+      id: 'input-feedback',
+      classes: 'input-feedback',
+      attributes: {'aria-live': 'polite'},
+      [
+        if (_candidates.isNotEmpty)
+          _buildColumnChoices()
+        else if (_hasError)
+          p(classes: 'error', [
+            .text('Couldn’t read a table. Check the text or choose its format.'),
+          ]),
+      ],
+    );
+  }
+
+  Component _buildColumnChoices() {
+    return div(classes: 'column-choice', [
+      span(id: 'columns-label', [.text('Columns')]),
+      div(
+        classes: 'column-buttons',
+        attributes: {'role': 'group', 'aria-labelledby': 'columns-label'},
+        [
+          for (final count in _candidates)
+            button(
+              classes: _columns == count
+                  ? 'btn btn-sm btn-primary btn-soft'
+                  : 'btn btn-sm btn-outline',
+              attributes: {'aria-pressed': '${_columns == count}'},
+              onClick: () => _chooseColumns(count),
+              [.text('$count')],
+            ),
+        ],
+      ),
+    ]);
+  }
+
+  Component _buildInputActions() {
+    return div(classes: 'pane-footer', [
+      button(classes: 'btn btn-sm btn-outline', onClick: _loadExample, [
+        .text('Try an example'),
+      ]),
+      if (_input.isNotEmpty)
+        button(classes: 'btn btn-sm btn-outline', onClick: _clear, [.text('Clear')]),
+    ]);
+  }
+
+  Component _buildOutputPane() {
+    return section(
+      classes: 'pane output-pane',
+      attributes: {'aria-label': 'Output'},
+      [
+        _buildOutputFormats(),
+        _buildOutputToolbar(),
+        _buildPreview(),
+        _buildCopyFeedback(),
+      ],
+    );
+  }
+
+  Component _buildOutputFormats() {
+    return div(classes: 'pane-heading', [
+      div(
+        classes: 'join output-format',
+        attributes: {'role': 'group', 'aria-label': 'Output format'},
+        [
+          for (final (value, title) in [('slack', 'Slack'), ('markdown', 'Markdown')])
+            button(
+              id: 'output-$value',
+              classes: 'join-item btn btn-sm btn-ghost',
+              attributes: {'aria-pressed': '${_outputFormat == value}'},
+              onClick: () => _changeOutputFormat(value),
+              [.text(title)],
+            ),
+        ],
+      ),
+    ]);
+  }
+
+  Component _buildOutputToolbar() {
+    final table = _table;
+    return div(classes: 'preview-toolbar', [
+      span(classes: 'table-size', [
+        if (table != null)
           .text(
-            'Rows belong together. Columns mean something. '
-            'Copying and pasting shouldn’t undo all that.',
+            '${table.rows.length} ${table.rows.length == 1 ? 'row' : 'rows'}'
+            ' · ${table.rows.first.length} columns',
           ),
-        ]),
+      ]),
+      button(
+        id: 'copy-output',
+        classes: 'btn btn-sm btn-primary copy-button',
+        disabled: _output.isEmpty || _copyStatus.isPending,
+        onClick: _copy,
+        [.text(_copyStatus == _CopyStatus.copied ? 'Table preserved.' : 'Copy')],
+      ),
+    ]);
+  }
+
+  Component _buildPreview() {
+    final parsedTable = _table;
+    return div(classes: 'preview', [
+      if (parsedTable == null)
+        p(classes: 'empty-preview', [
+          .text('Your table will appear here, columns and all.'),
+        ])
+      else if (_copyStatus.showFallback)
+        textarea(
+          key: ValueKey(_output),
+          id: 'copy-fallback',
+          classes: 'textarea table-input',
+          readonly: true,
+          spellCheck: SpellCheck.isFalse,
+          attributes: {
+            'wrap': 'off',
+            'aria-label': 'Output text',
+            'aria-describedby': 'copy-feedback',
+          },
+          [.text(_output)],
+        )
+      else if (_outputFormat == 'markdown')
+        pre(
+          attributes: {'tabindex': '0', 'aria-label': 'Markdown output'},
+          [.text(_output)],
+        )
+      else
+        div(
+          classes: 'table-scroll',
+          attributes: {'tabindex': '0', 'aria-label': 'Slack table preview'},
+          [
+            table(classes: 'table', [
+              thead([
+                tr([
+                  for (final cell in parsedTable.rows.first) th(scope: 'col', [.text(cell)]),
+                ]),
+              ]),
+              tbody([
+                for (final row in parsedTable.rows.skip(1))
+                  tr([
+                    for (final cell in row) td([.text(cell)]),
+                  ]),
+              ]),
+            ]),
+          ],
+        ),
+    ]);
+  }
+
+  Component _buildCopyFeedback() {
+    return div(
+      id: 'copy-feedback',
+      classes: 'copy-feedback',
+      attributes: {'role': 'status'},
+      [
+        if (_copyStatus.showFallback)
+          p(classes: 'error', [.text('Copy unavailable. Select the text above and copy.')]),
+        if (_copyStatus == _CopyStatus.copied)
+          span(classes: 'sr-only', [.text('Table preserved. Copied to clipboard.')]),
+      ],
+    );
+  }
+
+  Component _buildAbout() {
+    return details(classes: 'about', [
+      summary([.text('Why tables?')]),
+      p([
+        .text(
+          'Rows belong together. Columns mean something. '
+          'Copying and pasting shouldn’t undo all that.',
+        ),
       ]),
     ]);
   }
@@ -269,7 +349,8 @@ class _TableAppState extends State<TableApp> {
   void _changeOutputFormat(String value) {
     setState(() {
       _outputFormat = value;
-      _convert();
+      _conversion = _conversion.withOutputFormat(value);
+      _resetCopy();
     });
   }
 
@@ -300,48 +381,34 @@ class _TableAppState extends State<TableApp> {
   }
 
   void _convert() {
+    _conversion = Conversion.fromInput(
+      _input,
+      inputFormat: _inputFormat,
+      outputFormat: _outputFormat,
+      columns: _columns,
+    );
+    _resetCopy();
+  }
+
+  void _resetCopy() {
+    // A pending copy belongs to the old output, even if it finishes later.
     _revision++;
-    _table = null;
-    _output = '';
-    _error = null;
-    _candidates = [];
-    _copied = false;
-    _copying = false;
-    _copyFailed = false;
-    if (_input.trim().isEmpty) return;
-    try {
-      try {
-        _table = tables.parseTable(_input, inputFormat: _inputFormat);
-      } on tables.AmbiguousColumnsError catch (error) {
-        _candidates = error.candidates;
-        if (_columns == null || !_candidates.contains(_columns)) return;
-        _table = tables.parseTable(_input, inputFormat: _inputFormat, columns: _columns);
-      }
-      _output = tables.formatTable(_table!, outputFormat: _outputFormat);
-    } on tables.ParseError {
-      _error = 'Couldn’t read a table. Check the text or choose its format.';
-    }
+    _copyStatus = _CopyStatus.idle;
   }
 
   Future<void> _copy() async {
-    if (_output.isEmpty || _copying) return;
+    if (_output.isEmpty || _copyStatus.isPending) return;
     final revision = _revision;
-    setState(() => _copying = true);
+    setState(() {
+      _copyStatus = _copyStatus.showFallback ? _CopyStatus.retrying : _CopyStatus.copying;
+    });
     try {
       await component.copyText(_output);
       if (!mounted || revision != _revision) return;
-      setState(() {
-        _copying = false;
-        _copied = true;
-        _copyFailed = false;
-      });
+      setState(() => _copyStatus = _CopyStatus.copied);
     } catch (_) {
       if (!mounted || revision != _revision) return;
-      setState(() {
-        _copying = false;
-        _copied = false;
-        _copyFailed = true;
-      });
+      setState(() => _copyStatus = _CopyStatus.failed);
     }
   }
 }
