@@ -70,6 +70,20 @@ make
 make install PREFIX="$HOME/.local"
 ```
 
+Plain `make` only builds the commands in `build/`. Installation requires an
+explicit `make install`.
+
+To remember your install location for this checkout, create a `Makefile.local`
+file in the repository root containing:
+
+```make
+PREFIX = $(HOME)/.local
+```
+
+Then run `make install` without specifying `PREFIX`. `Makefile.local` is optional
+and ignored by Git. Use Make syntax (without quotes around the path); a
+command-line `PREFIX=...` still overrides this setting.
+
 Add the install directory to your `PATH`. Run this in your current terminal and
 add it to your shell startup file (usually `~/.zshrc` or `~/.bashrc`):
 
@@ -230,8 +244,17 @@ dart compile js -O2 --no-source-maps tool/benchmark.dart -o build/benchmark.js
 node build/benchmark.js
 ```
 
-Run `dart run tool/benchmark.dart` to measure the Dart VM instead. Compare results
-using the same compiler settings and runtime on an otherwise idle machine.
+To measure the native AOT runtime used by the CLI:
+
+```sh
+dart compile exe tool/benchmark.dart -o build/benchmark
+build/benchmark
+```
+
+The fixtures include wide and Unicode-heavy tables of roughly 2 MB, and report
+UTF-8 input sizes. `dart run tool/benchmark.dart` measures the Dart VM's JIT
+runtime. Compare results using the same compiler settings and runtime on an
+otherwise idle machine.
 
 ## Use the Dart library
 

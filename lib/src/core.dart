@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
-import 'package:string_width/string_width.dart';
-
+import 'display_width.dart';
 import 'formats.dart';
 
 class ParseError implements Exception {
@@ -57,8 +56,8 @@ String render(
 Table parseTable(String text,
     {String inputFormat = InputFormats.auto, int? columns}) {
   text = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
-  text = text.replaceAll(RegExp(r'^\n+|\n+$'), '');
-  if (_strip(text).isEmpty) throw const ParseError('no table input found');
+  text = _trimNewlines(text);
+  if (!_hasNonWhitespace(text)) throw const ParseError('no table input found');
 
   // Detection precedence: specialized tables before general delimiters,
   // and TSV before CSV when the input contains both tabs and commas.
@@ -96,7 +95,10 @@ Table parseTable(String text,
     return parser(text);
   }
   for (final entry in parsers.entries) {
-    if (entry.key == InputFormats.markdown && !text.contains('|')) continue;
+    if (entry.key == InputFormats.markdown &&
+        (!text.contains('|') || !text.contains('---'))) {
+      continue;
+    }
     try {
       return entry.value(text);
     } on AmbiguousColumnsError {
@@ -142,7 +144,7 @@ String formatMarkdown(Table table) {
   // Measure escaped source: wide glyphs occupy two columns, while combining
   // marks share a column with their base character.
   for (final row in escapedRows) {
-    final widths = [for (final cell in row) _displayWidth(cell)];
+    final widths = [for (final cell in row) displayWidth(cell)];
     measuredWidths.add(widths);
     for (var column = 0; column < row.length; column++) {
       columnWidths[column] = math.max(columnWidths[column], widths[column]);
@@ -170,16 +172,6 @@ final _edgeWhitespace =
 
 String _escapeMarkdownCell(String cell) =>
     cell.replaceAll('\\', '\\\\').replaceAll('|', r'\|');
-
-int _displayWidth(String value) {
-  // Printable ASCII occupies one display column per code unit. Keep controls,
-  // ANSI escapes, and all Unicode on the existing display-width path.
-  for (var i = 0; i < value.length; i++) {
-    final code = value.codeUnitAt(i);
-    if (code < 32 || code > 126) return stringWidth(value);
-  }
-  return value.length;
-}
 
 String _formatMarkdownRow(
     List<String> row, List<int> columnWidths, List<int> measuredWidths) {
@@ -396,7 +388,7 @@ List<List<String>> _readDelimitedRows(
 }
 
 List<String> _nonEmptyLines(String text) =>
-    text.split('\n').where((line) => _strip(line).isNotEmpty).toList();
+    text.split('\n').where(_hasNonWhitespace).toList();
 
 List<String> _splitMarkdownRow(String line) {
   line = _strip(line);
@@ -436,7 +428,60 @@ List<String> _splitMarkdownRow(String line) {
 
 String _strip(String value) => value.replaceAll(_edgeWhitespace, '');
 
-String _cleanCell(String cell) => _strip(cell).replaceAll(_whitespace, ' ');
+String _trimNewlines(String text) {
+  var start = 0;
+  var end = text.length;
+  while (start < end && text.codeUnitAt(start) == 10) {
+    start++;
+  }
+  while (end > start && text.codeUnitAt(end - 1) == 10) {
+    end--;
+  }
+  return text.substring(start, end);
+}
+
+bool _hasNonWhitespace(String text) {
+  for (var i = 0; i < text.length; i++) {
+    if (!_isWhitespace(text.codeUnitAt(i))) return true;
+  }
+  return false;
+}
+
+String _cleanCell(String cell) {
+  // Already-normalized cells need neither regex matching nor a new string.
+  var previousSpace = false;
+  for (var i = 0; i < cell.length; i++) {
+    final code = cell.codeUnitAt(i);
+    if (code > 0x20 && code < 0x7f) {
+      previousSpace = false;
+      continue;
+    }
+    if (_isWhitespace(code)) {
+      if (code != 0x20 || i == 0 || i == cell.length - 1 || previousSpace) {
+        return _strip(cell).replaceAll(_whitespace, ' ');
+      }
+      previousSpace = true;
+    } else {
+      previousSpace = false;
+    }
+  }
+  return cell;
+}
+
+// Keep this predicate in sync with _whitespaceCharacters. Whitespace contains
+// no supplementary code points, so scanning UTF-16 code units is sufficient.
+bool _isWhitespace(int code) =>
+    code == 0x20 ||
+    (code >= 0x09 && code <= 0x0d) ||
+    (code >= 0x1c && code <= 0x1f) ||
+    code == 0x85 ||
+    code == 0xa0 ||
+    code == 0x1680 ||
+    (code >= 0x2000 && code <= 0x200a) ||
+    (code >= 0x2028 && code <= 0x2029) ||
+    code == 0x202f ||
+    code == 0x205f ||
+    code == 0x3000;
 
 bool _isSeparatorRow(List<String> cells) =>
     cells.isNotEmpty &&

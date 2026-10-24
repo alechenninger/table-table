@@ -171,11 +171,83 @@ void main() {
     expect(render('\ufeffA,B\nx,y'), '\ufeffA\tB\nx\ty');
   });
 
+  test('whitespace fast paths match the normalization policy across the BMP',
+      () {
+    final whitespaceCodes = {
+      0x09,
+      0x0a,
+      0x0b,
+      0x0c,
+      0x0d,
+      0x1c,
+      0x1d,
+      0x1e,
+      0x1f,
+      0x20,
+      0x85,
+      0xa0,
+      0x1680,
+      for (var code = 0x2000; code <= 0x200a; code++) code,
+      0x2028,
+      0x2029,
+      0x202f,
+      0x205f,
+      0x3000,
+    };
+    final cells = [
+      for (var code = 0; code <= 0xffff; code++)
+        'a${String.fromCharCode(code)}b',
+    ];
+    expect(
+      formatTsv(Table([cells])),
+      [
+        for (var code = 0; code <= 0xffff; code++)
+          whitespaceCodes.contains(code) ? 'a b' : cells[code],
+      ].join('\t'),
+    );
+
+    for (final code in whitespaceCodes) {
+      final whitespace = String.fromCharCode(code);
+      expect(
+        formatTsv(Table([
+          ['${whitespace}a$whitespace${whitespace}b$whitespace', 'a b', 'a  b'],
+        ])),
+        'a b\ta b\ta b',
+      );
+      expect(
+        () => parseTable('$whitespace\n$whitespace'),
+        throwsA(isA<ParseError>().having(
+            (error) => error.message, 'message', 'no table input found')),
+      );
+      expect(
+        parseTable(
+          '$whitespace\n| A | B |\n$whitespace\n| --- | --- |\n'
+          '$whitespace\n| x | y |\n$whitespace',
+          inputFormat: 'markdown',
+        ).rows,
+        [
+          ['A', 'B'],
+          ['x', 'y'],
+        ],
+      );
+    }
+  });
+
+  test('edge newline trimming preserves quoted multiline content', () {
+    for (final border in ['', '\n', '\n\n', '\r', '\r\n', '\r\n\r\n']) {
+      expect(
+        render('${border}A,B\n"x\n\ny",z$border', inputFormat: 'csv'),
+        'A\tB\nx y\tz',
+      );
+    }
+  });
+
   test('source format and detection precedence', () {
     for (final (text, source) in [
       ('| A | B |\n| --- | --- |\n| x | y |', 'markdown'),
       ('A\tB\nx\ty', 'tsv'),
       ('A\tB,C\nx\ty,z', 'tsv'),
+      ('A\tB\nx\ty|z', 'tsv'),
       ('A\tB\tC\n1\t2\t3', 'tsv'),
       ('A\tB\tC\n1\t2\t3\t4\n5\t6\t7', 'tsv'),
       ('A\tB\tC\n1\n2', 'tsv'),
