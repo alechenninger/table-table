@@ -1,3 +1,7 @@
+.DEFAULT_GOAL := all
+
+-include Makefile.local
+
 DART ?= dart
 PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin
