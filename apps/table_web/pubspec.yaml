@@ -11,7 +11,6 @@ dependencies:
   jaspr: ^0.23.5
   table_table:
     path: ../..
-  string_width: ^0.1.5
   web: ^1.1.1
 
 dev_dependencies:

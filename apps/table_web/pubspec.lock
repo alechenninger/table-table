@@ -41,14 +41,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.1.2"
-  ansi_strip:
-    dependency: transitive
-    description:
-      name: ansi_strip
-      sha256: "9bb54e10962ac1de86b9b64a278a5b8965a28a2f741975eac7fe9fb0ebe1aaac"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.1.1+1"
   ansi_styles:
     dependency: transitive
     description:
@@ -793,14 +785,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.1"
-  string_width:
-    dependency: "direct main"
-    description:
-      name: string_width
-      sha256: "0ea481fbb6d5e2d70937fea303d8cc9296048da107dffeecf2acb675c8b47e7f"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.1.5"
   table_table:
     dependency: "direct main"
     description:

@@ -1,10 +1,10 @@
-import 'package:characters/characters.dart';
 import 'package:jaspr/dom.dart';
 import 'package:jaspr/jaspr.dart';
 import 'package:table_table/slack_table.dart' as tables;
-import 'package:string_width/string_width.dart';
 
 import 'conversion.dart';
+import 'preview_data.dart';
+import 'table_preview.dart';
 
 class TableApp extends StatefulComponent {
   final Future<void> Function(String) copyText;
@@ -35,8 +35,6 @@ class _TableAppState extends State<TableApp> {
   static const _tableInputClasses =
       'textarea table-input w-full min-h-36 max-h-80 resize-y field-sizing-content overflow-auto p-3 '
       'font-mono text-base leading-6 [tab-size:4] sm:p-4';
-  static const _tableCellClasses =
-      'min-w-24 max-w-90 px-3 py-2 align-top whitespace-normal wrap-anywhere';
   static const _secondaryActionClasses =
       'btn btn-outline min-h-9 h-auto border-base-content/20 px-2 py-1 '
       'text-sm leading-6 font-medium text-base-content/70 '
@@ -69,6 +67,8 @@ class _TableAppState extends State<TableApp> {
   int? _columns;
   ({String input, String inputFormat, int? columns})? _clearedInput;
   Conversion _conversion = const EmptyConversion();
+  PreviewData? _preview;
+  Component? _copyFallback;
   _CopyStatus _copyStatus = _CopyStatus.idle;
   int _revision = 0;
   int _inputKey = 0;
@@ -407,7 +407,7 @@ class _TableAppState extends State<TableApp> {
             .text('Your table will appear here.'),
           ])
         else if (_copyStatus.showFallback)
-          textarea(
+          _copyFallback ??= textarea(
             key: ValueKey(_output),
             id: 'copy-fallback',
             classes: _tableInputClasses,
@@ -420,55 +420,15 @@ class _TableAppState extends State<TableApp> {
             },
             [.text(_output)],
           )
-        else if (_outputFormat == tables.OutputFormats.markdown)
-          pre(
-            classes:
-                'm-0 max-h-96 max-w-full overflow-auto p-3 font-mono text-base leading-6 [tab-size:4] focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2 sm:p-4',
-            attributes: {'tabindex': '0', 'aria-label': 'Markdown output'},
-            [..._buildMarkdownText()],
-          )
         else
-          div(
-            classes:
-                'table-scroll max-h-96 max-w-full overflow-auto p-0.5 focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2',
-            attributes: {'tabindex': '0', 'aria-label': 'Slack table preview'},
-            [
-              table(classes: 'table w-max text-base leading-6', [
-                thead(classes: 'text-base', [
-                  tr([
-                    for (final cell in parsedTable.rows.first)
-                      th(scope: 'col', classes: _tableCellClasses, [.text(cell)]),
-                  ]),
-                ]),
-                tbody([
-                  for (final row in parsedTable.rows.skip(1))
-                    tr([
-                      for (final cell in row) td(classes: _tableCellClasses, [.text(cell)]),
-                    ]),
-                ]),
-              ]),
-            ],
+          TablePreview(
+            data: _preview ??= PreviewData.fromConversion(
+              _conversion as ReadyConversion,
+              _outputFormat,
+            ),
           ),
       ],
     );
-  }
-
-  Iterable<Component> _buildMarkdownText() sync* {
-    final text = StringBuffer();
-    for (final character in _output.characters) {
-      // Fallback CJK and emoji fonts may not be exactly twice as wide as the
-      // monospace font. Keep their glyphs on the same grid as the padding.
-      if (character.codeUnitAt(0) > 127 && stringWidth(character) == 2) {
-        if (text.isNotEmpty) {
-          yield Component.text(text.toString());
-          text.clear();
-        }
-        yield span(classes: 'inline-block w-[2ch] text-center', [.text(character)]);
-      } else {
-        text.write(character);
-      }
-    }
-    if (text.isNotEmpty) yield Component.text(text.toString());
   }
 
   Component _buildTableSize() {
@@ -517,9 +477,12 @@ class _TableAppState extends State<TableApp> {
   }
 
   void _changeOutputFormat(String value) {
+    if (value == _outputFormat) return;
     setState(() {
       _outputFormat = value;
       _conversion = _conversion.withOutputFormat(value);
+      _preview = null;
+      _copyFallback = null;
       _resetCopy();
     });
   }
@@ -573,6 +536,8 @@ class _TableAppState extends State<TableApp> {
       outputFormat: _outputFormat,
       columns: _columns,
     );
+    _preview = null;
+    _copyFallback = null;
     _resetCopy();
   }
 

@@ -3,9 +3,88 @@ import 'dart:async';
 import 'package:jaspr/dom.dart';
 import 'package:jaspr/jaspr.dart' show Text;
 import 'package:jaspr_test/jaspr_test.dart';
+import 'package:table_table/slack_table.dart' as tables;
 import 'package:table_table_web/app.dart';
+import 'package:table_table_web/table_preview.dart';
 
 void main() {
+  for (final format in tables.OutputFormats.values) {
+    testComponents('bounded $format preview still copies the entire table', (tester) async {
+      String? copied;
+      tester.pumpComponent(TableApp(copyText: (text) async => copied = text));
+      final input = [
+        for (var row = 0; row < 76; row++)
+          [for (var col = 0; col < 25; col++) 'r$row-c$col'].join('\t'),
+      ].join('\n');
+      await _enter(tester, input);
+      await tester.click(_button('output-$format'));
+      expect(find.text('75 data rows · 25 columns'), findsOneComponent);
+      expect(find.textContaining('first 50 of 75 data rows'), findsOneComponent);
+      expect(find.textContaining('first 20 of 25 columns'), findsOneComponent);
+      expect(find.text('r75-c24'), findsNothing);
+      if (format == 'slack') {
+        expect(find.tag('th').evaluate().length, 20);
+        expect(find.tag('td').evaluate().length, 1000);
+      }
+      await tester.click(_button('copy-output'));
+      expect(copied, tables.render(input, outputFormat: format));
+      expect(copied, contains('r75-c24'));
+    });
+
+    testComponents('copy status reuses $format preview data and its rendered children', (
+      tester,
+    ) async {
+      final copy = Completer<void>();
+      tester.pumpComponent(TableApp(copyText: (_) => copy.future));
+      await _enter(tester, 'Owner\tStatus\n李明\t👩🏽‍💻');
+      await tester.click(_button('output-$format'));
+      final preview = find.byType(TablePreview).evaluate().single.component as TablePreview;
+      final text = find.descendant(of: find.byType(TablePreview), matching: find.byType(Text));
+      final children = text.evaluate().map((element) => element.component).toList();
+
+      Future<void> unchanged() async {
+        final current = find.byType(TablePreview).evaluate().single.component as TablePreview;
+        expect(current.data, same(preview.data));
+        final updated = text.evaluate().map((element) => element.component).toList();
+        expect(updated.length, children.length);
+        for (var i = 0; i < children.length; i++) {
+          expect(updated[i], same(children[i]));
+        }
+      }
+
+      await tester.click(_button('copy-output'));
+      expect(_copyButton().disabled, isTrue);
+      await unchanged();
+      copy.complete();
+      await tester.pump();
+      expect(find.text('Table preserved.'), findsOneComponent);
+      await unchanged();
+      await tester.click(_button('output-$format'));
+      await unchanged();
+      await _enter(tester, 'A,B\nx,y');
+      expect(
+        (find.byType(TablePreview).evaluate().single.component as TablePreview).data,
+        isNot(same(preview.data)),
+      );
+    });
+  }
+
+  testComponents('manual-copy fallback contains the complete shortened table', (tester) async {
+    tester.pumpComponent(TableApp(copyText: (_) async => throw StateError('denied')));
+    final input = ['A\tB', for (var i = 0; i < 75; i++) '$i\t${'x' * 500}'].join('\n');
+    await _enter(tester, input);
+    expect(find.textContaining('Some preview text is shortened'), findsOneComponent);
+    await tester.click(_button('copy-output'));
+    final fallback = find.byComponentPredicate((c) => c is textarea && c.id == 'copy-fallback');
+    final text = find
+        .descendant(of: fallback, matching: find.byType(Text))
+        .evaluate()
+        .map((element) => (element.component as Text).text)
+        .join();
+    expect(text, tables.render(input));
+    expect(find.byType(TablePreview), findsNothing);
+  });
+
   testComponents('starts empty, with copy disabled and no errors', (tester) async {
     tester.pumpComponent(TableApp(copyText: (_) async {}));
     expect(find.text('table-table'), findsOneComponent);

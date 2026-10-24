@@ -44,9 +44,24 @@ instead of squeezing into the pane, with cell widths between 6rem and 22.5rem;
 long cells wrap at that upper limit. Keep these proportions
 when adding controls and check both sides of the `sm` breakpoint plus 320px reflow.
 
+Previews show at most 50 data rows and 20 columns, with at most 256 UTF-16 code
+units per cell and a 20,000-unit text budget. Truncation preserves complete
+graphemes and marks shortened cells with an ellipsis. The size indicator reports
+the full table dimensions; a notice identifies limited previews and explains
+that Copy includes the entire table. Manual-copy fallback also retains the full
+output.
+
 The Markdown preview reserves two monospace columns for wide CJK and emoji
-graphemes, so fallback font metrics do not shift the following pipes. These
-presentation spans preserve the exact output text for selection and copying.
+graphemes, using the shared core's cached width matcher. Small previews preserve
+the exact formatted source. Limited previews format the visible cells, so their
+padding can differ from the full output. Markdown padding also counts toward
+the text budget; large previews stop at a line boundary and report the actual
+number of shown rows.
+
+`PreviewData` is prepared once per conversion or output-format change.
+`TablePreview` skips rebuilding when that data is unchanged, so copy-button
+feedback does not regenerate cells or Unicode presentation spans. The full
+conversion remains synchronous in the shared core.
 
 Clear input becomes Undo clear until the user enters new text or loads an example.
 Undo restores the original input, source format, and column choice while retaining
