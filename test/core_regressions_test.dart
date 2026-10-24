@@ -62,7 +62,9 @@ void main() {
     for (final (text, source) in [
       ('| A | B |\n| --- | --- |\n| x | y |', 'markdown'),
       ('A\tB\nx\ty', 'tsv'),
+      ('A\tB,C\nx\ty,z', 'tsv'),
       ('A,B\nx,y', 'csv'),
+      ('A,B|C\nx,y|z', 'csv'),
       ('A | B\nx | y', 'pipe'),
       ('A\n\nB\n\nx\n\ny', 'spaced'),
       ('A\tB\tC\nx\ny\nz', 'cursor'),

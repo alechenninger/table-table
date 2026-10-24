@@ -27,19 +27,24 @@ enum _CopyStatus {
 
 class _TableAppState extends State<TableApp> {
   static const _example = '| Name | Role |\n| --- | --- |\n| Ada | Engineering |\n| Sam | Design |';
-  static const _formats = {
-    'auto': 'Auto-detect',
-    'markdown': 'Markdown',
-    'csv': 'CSV',
-    'tsv': 'TSV',
-    'pipe': 'Pipe-separated',
-    'cursor': 'Cursor',
-    'spaced': 'Spaced cells',
+  static const _inputFormatLabels = {
+    tables.InputFormats.auto: 'Auto-detect',
+    tables.InputFormats.markdown: 'Markdown',
+    tables.InputFormats.csv: 'CSV',
+    tables.InputFormats.tsv: 'TSV',
+    tables.InputFormats.pipe: 'Pipe-separated',
+    tables.InputFormats.cursor: 'Cursor',
+    tables.InputFormats.spaced: 'Spaced cells',
+  };
+
+  static const _outputFormatLabels = {
+    tables.OutputFormats.slack: 'Slack',
+    tables.OutputFormats.markdown: 'Markdown',
   };
 
   String _input = '';
-  String _inputFormat = 'auto';
-  String _outputFormat = 'slack';
+  String _inputFormat = tables.InputFormats.auto;
+  String _outputFormat = tables.OutputFormats.slack;
   int? _columns;
   Conversion _conversion = const EmptyConversion();
   _CopyStatus _copyStatus = _CopyStatus.idle;
@@ -111,7 +116,7 @@ class _TableAppState extends State<TableApp> {
           classes: 'detected-format',
           attributes: {'role': 'status', 'aria-atomic': 'true'},
           [
-            if (table != null && _inputFormat == 'auto') ...[
+            if (table != null && _inputFormat == tables.InputFormats.auto) ...[
               span(
                 classes: 'detection-check',
                 attributes: {'aria-hidden': 'true'},
@@ -119,7 +124,7 @@ class _TableAppState extends State<TableApp> {
                   .text('✓'),
                 ],
               ),
-              span([.text('${_formats[table.sourceFormat]} detected')]),
+              span([.text('${_inputFormatLabels[table.sourceFormat]} detected')]),
             ],
           ],
         ),
@@ -131,7 +136,8 @@ class _TableAppState extends State<TableApp> {
         attributes: {'aria-label': 'Input format'},
         onChange: (values) => _changeInputFormat(values.single),
         [
-          for (final entry in _formats.entries) option(value: entry.key, [.text(entry.value)]),
+          for (final entry in _inputFormatLabels.entries)
+            option(value: entry.key, [.text(entry.value)]),
         ],
       ),
     ]);
@@ -222,13 +228,13 @@ class _TableAppState extends State<TableApp> {
         classes: 'join output-format',
         attributes: {'role': 'group', 'aria-label': 'Output format'},
         [
-          for (final (value, title) in [('slack', 'Slack'), ('markdown', 'Markdown')])
+          for (final value in tables.OutputFormats.values)
             button(
               id: 'output-$value',
               classes: 'join-item btn btn-sm btn-ghost',
               attributes: {'aria-pressed': '${_outputFormat == value}'},
               onClick: () => _changeOutputFormat(value),
-              [.text(title)],
+              [.text(_outputFormatLabels[value]!)],
             ),
         ],
       ),
@@ -276,7 +282,7 @@ class _TableAppState extends State<TableApp> {
           },
           [.text(_output)],
         )
-      else if (_outputFormat == 'markdown')
+      else if (_outputFormat == tables.OutputFormats.markdown)
         pre(
           attributes: {'tabindex': '0', 'aria-label': 'Markdown output'},
           [.text(_output)],
@@ -365,7 +371,7 @@ class _TableAppState extends State<TableApp> {
     setState(() {
       _inputKey++;
       _input = _example;
-      _inputFormat = 'auto';
+      _inputFormat = tables.InputFormats.auto;
       _columns = null;
       _convert();
     });

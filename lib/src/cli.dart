@@ -11,7 +11,7 @@ import 'clipboard.dart';
 Future<int> runCli(
   List<String> arguments, {
   String prog = 'slack-table',
-  String defaultOutput = 'slack',
+  String defaultOutput = OutputFormats.slack,
 }) async {
   final parser = _buildParser(defaultOutput);
   final ArgResults args;
@@ -87,7 +87,7 @@ class _Cli {
     if (args.flag('copy') || copyByDefault) {
       await _clipboard.write(output);
       if (!args.flag('quiet') && stderr.hasTerminal) {
-        final label = outputFormat == 'markdown'
+        final label = outputFormat == OutputFormats.markdown
             ? 'Markdown table'
             : 'Slack-native table data';
         stderr.writeln('Copied $label to the clipboard.');
@@ -126,8 +126,9 @@ class _Cli {
     try {
       return (await _readClipboardTable(), true);
     } on _CliError {
-      if (stderr.hasTerminal)
+      if (stderr.hasTerminal) {
         stderr.writeln('Paste a table, then press Ctrl-D:');
+      }
       return (await _parseText(await _readStdin()), true);
     }
   }
@@ -139,6 +140,10 @@ class _Cli {
     } on ClipboardError catch (error) {
       throw _CliError('could not read clipboard text: $error');
     }
+    return _parseClipboardText(text);
+  }
+
+  Future<Table> _parseClipboardText(String text) {
     if (text.trim().isEmpty) {
       throw const _CliError('no table text found on the clipboard');
     }
@@ -148,7 +153,7 @@ class _Cli {
   Future<Table> _waitForClipboardTable() async {
     final String original;
     try {
-      original = await _clipboard.signature();
+      original = await _clipboard.read();
     } on ClipboardError catch (error) {
       throw _CliError('could not read clipboard: $error');
     }
@@ -160,11 +165,13 @@ class _Cli {
       await Future<void>.delayed(const Duration(milliseconds: 200));
       final String current;
       try {
-        current = await _clipboard.signature();
+        current = await _clipboard.read();
       } on ClipboardError catch (error) {
         throw _CliError('could not read clipboard: $error');
       }
-      if (current != original) return _readClipboardTable();
+      // Compare text itself, including same-length changes, and parse the
+      // observed value without reading a potentially newer clipboard value.
+      if (current != original) return _parseClipboardText(current);
     }
   }
 
@@ -186,8 +193,9 @@ class _Cli {
     while (true) {
       stderr.write('Number of columns ($label): ');
       await stderr.flush();
-      if (!await _input.moveNext())
+      if (!await _input.moveNext()) {
         throw const _CliError('no column count selected');
+      }
       final selected = int.tryParse(_input.current.trim(), radix: 10);
       if (candidates.contains(selected)) return selected!;
       stderr.writeln('Choose one of: $label.');
@@ -205,15 +213,15 @@ class _Cli {
 
 ArgParser _buildParser(String defaultOutput) => ArgParser()
   ..addOption('input',
-      allowed: ['auto', 'markdown', 'cursor', 'csv', 'tsv', 'pipe', 'spaced'],
-      defaultsTo: 'auto',
+      allowed: InputFormats.values,
+      defaultsTo: InputFormats.auto,
       help: 'Input format to parse.')
   ..addOption('columns',
       valueHelp: 'N',
       help:
           'Column count for blank-line-separated cells; prompts if ambiguous.')
   ..addOption('output',
-      allowed: ['slack', 'markdown'],
+      allowed: OutputFormats.values,
       defaultsTo: defaultOutput,
       help: 'Output format.')
   ..addFlag('copy',
@@ -237,9 +245,11 @@ ArgParser _buildParser(String defaultOutput) => ArgParser()
 int? _columnCount(String? value) {
   if (value == null) return null;
   final columns = int.tryParse(value.trim(), radix: 10);
-  if (columns == null)
+  if (columns == null) {
     throw const _CliError('argument --columns: must be an integer');
-  if (columns < 2)
+  }
+  if (columns < 2) {
     throw const _CliError('argument --columns: must be at least 2');
+  }
   return columns;
 }

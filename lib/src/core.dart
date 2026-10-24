@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'formats.dart';
+
 class ParseError implements Exception {
   final String message;
 
@@ -22,7 +24,7 @@ class Table {
   final List<List<String>> rows;
   final String sourceFormat;
 
-  Table(List<List<String>> rows, {this.sourceFormat = 'auto'})
+  Table(List<List<String>> rows, {this.sourceFormat = InputFormats.auto})
       : rows = List.unmodifiable(
             rows.map((row) => List<String>.unmodifiable(row)));
 }
@@ -30,8 +32,8 @@ class Table {
 /// Parse text and format it for Slack (default) or Markdown.
 String render(
   String text, {
-  String inputFormat = 'auto',
-  String outputFormat = 'slack',
+  String inputFormat = InputFormats.auto,
+  String outputFormat = OutputFormats.slack,
   int? columns,
 }) =>
     formatTable(
@@ -40,31 +42,35 @@ String render(
     );
 
 /// Parse a table without performing I/O or prompting for ambiguous columns.
-Table parseTable(String text, {String inputFormat = 'auto', int? columns}) {
+Table parseTable(String text,
+    {String inputFormat = InputFormats.auto, int? columns}) {
   text = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
   text = text.replaceAll(RegExp(r'^\n+|\n+$'), '');
   if (_strip(text).isEmpty) throw const ParseError('no table input found');
 
+  // Detection precedence: specialized tables before general delimiters,
+  // and TSV before CSV when the input contains both tabs and commas.
   final parsers = <String, Table Function(String)>{
-    'markdown': _parseMarkdown,
-    'cursor': _parseCursorCanvas,
-    'csv': _parseCsv,
-    'tsv': _parseTsv,
-    'pipe': _parsePipe,
-    'spaced': (value) => _parseSpacedCells(value, columns),
+    InputFormats.markdown: _parseMarkdown,
+    InputFormats.cursor: _parseCursorCanvas,
+    InputFormats.tsv: _parseTsv,
+    InputFormats.csv: _parseCsv,
+    InputFormats.pipe: _parsePipe,
+    InputFormats.spaced: (value) => _parseSpacedCells(value, columns),
   };
-  if (inputFormat != 'auto') {
+  if (inputFormat != InputFormats.auto) {
     final parser = parsers[inputFormat];
     if (parser == null) {
-      final names = ['auto', ...(parsers.keys.toList()..sort())].join(', ');
+      final names =
+          [InputFormats.auto, ...(parsers.keys.toList()..sort())].join(', ');
       throw ParseError(
           'unknown input format ${_repr(inputFormat)}; expected $names');
     }
     return parser(text);
   }
-  for (final name in ['markdown', 'cursor', 'tsv', 'csv', 'pipe', 'spaced']) {
+  for (final parser in parsers.values) {
     try {
-      return parsers[name]!(text);
+      return parser(text);
     } on AmbiguousColumnsError {
       rethrow;
     } on ParseError {
@@ -74,15 +80,15 @@ Table parseTable(String text, {String inputFormat = 'auto', int? columns}) {
   throw const ParseError('could not detect a supported table format');
 }
 
-String formatTable(Table table, {String outputFormat = 'slack'}) {
+String formatTable(Table table, {String outputFormat = OutputFormats.slack}) {
   switch (outputFormat) {
-    case 'slack':
+    case OutputFormats.slack:
       return formatTsv(table);
-    case 'markdown':
+    case OutputFormats.markdown:
       return formatMarkdown(table);
     default:
       throw ParseError(
-        'unknown output format ${_repr(outputFormat)}; expected slack, markdown',
+        'unknown output format ${_repr(outputFormat)}; expected ${OutputFormats.values.join(', ')}',
       );
   }
 }
@@ -96,29 +102,32 @@ String formatTsv(Table table) {
 
 /// Render padded Markdown, using the first row as the header.
 String formatMarkdown(Table table) {
-  var rows = _normalized(table.rows);
+  final rows = _normalized(table.rows);
   if (rows.isEmpty || rows.first.isEmpty) {
     throw const ParseError('no table rows found');
   }
-  rows = rows
-      .map((row) => row
-          .map(
-            (cell) => cell.replaceAll('\\', '\\\\').replaceAll('|', r'\|'),
-          )
-          .toList())
-      .toList();
+  final escapedRows = [
+    for (final row in rows) [for (final cell in row) _escapeMarkdownCell(cell)],
+  ];
+  final columnWidths = List.filled(escapedRows.first.length, 3);
   // Python measures code points, not UTF-16 units or visual display width.
-  final widths = List.generate(rows.first.length,
-      (i) => rows.map((row) => row[i].runes.length).fold(3, math.max));
-  String line(List<String> row) =>
-      '| ${List.generate(row.length, (i) => row[i] + ' ' * (widths[i] - row[i].runes.length)).join(' | ')} |';
+  for (final row in escapedRows) {
+    for (var column = 0; column < row.length; column++) {
+      columnWidths[column] =
+          math.max(columnWidths[column], row[column].runes.length);
+    }
+  }
+  final separator = [for (final width in columnWidths) '-' * width];
   return [
-    line(rows.first),
-    line(widths.map((width) => '-' * width).toList()),
-    ...rows.skip(1).map(line),
+    _formatMarkdownRow(escapedRows.first, columnWidths),
+    _formatMarkdownRow(separator, columnWidths),
+    for (final row in escapedRows.skip(1))
+      _formatMarkdownRow(row, columnWidths),
   ].join('\n');
 }
 
+// Match the Python CSV reader's default limit, measured in code points.
+const _csvFieldLimit = 131072;
 final _separator = RegExp(r'^:?-{3,}:?$');
 // Match Python str.split()/strip(), including its extra control characters,
 // but excluding the BOM which Dart's trim() treats as whitespace.
@@ -127,6 +136,19 @@ const _whitespaceCharacters =
 final _whitespace = RegExp('[$_whitespaceCharacters]+');
 final _edgeWhitespace =
     RegExp('^[$_whitespaceCharacters]+|[$_whitespaceCharacters]+\$');
+
+String _escapeMarkdownCell(String cell) =>
+    cell.replaceAll('\\', '\\\\').replaceAll('|', r'\|');
+
+String _formatMarkdownRow(List<String> row, List<int> columnWidths) {
+  final paddedCells = <String>[];
+  for (var column = 0; column < row.length; column++) {
+    final cell = row[column];
+    final padding = columnWidths[column] - cell.runes.length;
+    paddedCells.add(cell + ' ' * padding);
+  }
+  return '| ${paddedCells.join(' | ')} |';
+}
 
 Table _parseMarkdown(String text) {
   final lines = _nonEmptyLines(text);
@@ -148,7 +170,7 @@ Table _parseMarkdown(String text) {
     }
     return Table(
       _normalized([header, ...body], math.max(header.length, separator.length)),
-      sourceFormat: 'markdown',
+      sourceFormat: InputFormats.markdown,
     );
   }
   throw const ParseError('no markdown table separator found');
@@ -165,26 +187,28 @@ Table _parsePipe(String text) {
         'pipe-delimited input must have at least two columns');
   }
   if (rows.length > 1 && _isSeparatorRow(rows[1])) rows.removeAt(1);
-  return Table(_normalized(rows), sourceFormat: 'pipe');
+  return Table(_normalized(rows), sourceFormat: InputFormats.pipe);
 }
 
 Table _parseCsv(String text) {
-  if (!text.contains(','))
+  if (!text.contains(',')) {
     throw const ParseError('no comma-delimited rows found');
-  return _parseDelimited(text, 'csv', ',');
+  }
+  return _parseDelimited(text, InputFormats.csv, ',');
 }
 
 Table _parseTsv(String text) {
-  if (!text.contains('\t'))
+  if (!text.contains('\t')) {
     throw const ParseError('no tab-delimited rows found');
-  return _parseDelimited(text, 'tsv', '\t');
+  }
+  return _parseDelimited(text, InputFormats.tsv, '\t');
 }
 
 Table _parseCursorCanvas(String text) {
   if (!text.contains('\t')) {
     throw const ParseError('no cursor canvas tab fragments found');
   }
-  final rows = _readDelimitedRows(text, 'cursor', '\t');
+  final rows = _readDelimitedRows(text, InputFormats.cursor, '\t');
   if (rows.length < 3) {
     throw const ParseError(
         'cursor canvas input needs a header and fragmented rows');
@@ -222,7 +246,8 @@ Table _parseCursorCanvas(String text) {
     throw const ParseError(
         'cursor canvas fragments ended before a row was complete');
   }
-  return Table(_normalized(logicalRows, columnCount), sourceFormat: 'cursor');
+  return Table(_normalized(logicalRows, columnCount),
+      sourceFormat: InputFormats.cursor);
 }
 
 Table _parseSpacedCells(String text, int? columns) {
@@ -250,7 +275,7 @@ Table _parseSpacedCells(String text, int? columns) {
   return Table([
     for (var i = 0; i < cells.length; i += columns)
       cells.sublist(i, i + columns),
-  ], sourceFormat: 'spaced');
+  ], sourceFormat: InputFormats.spaced);
 }
 
 Table _parseDelimited(String text, String format, String delimiter) {
@@ -274,8 +299,8 @@ List<List<String>> _readDelimitedRows(
   var fieldLength = 0;
 
   void append(String char) {
-    if (++fieldLength > 131072) {
-      throw const ParseError('field larger than field limit (131072)');
+    if (++fieldLength > _csvFieldLimit) {
+      throw const ParseError('field larger than field limit ($_csvFieldLimit)');
     }
     cell.write(char);
   }

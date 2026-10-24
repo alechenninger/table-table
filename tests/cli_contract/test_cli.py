@@ -36,6 +36,7 @@ class CliTests(unittest.TestCase):
         self.env['TEST_CLIPBOARD'] = str(self.clipboard)
         self.env['TEST_READS'] = str(self.count)
         self.env.pop('TEST_CHANGE_AFTER_READ', None)
+        self.env.pop('TEST_CHANGE_AGAIN_AFTER_READ', None)
         self.env.pop('TEST_CLIPBOARD_ERROR', None)
         self.env.pop('TEST_COPY_ERROR', None)
         self.env.pop('TEST_INVALID_UTF8', None)
@@ -51,8 +52,10 @@ text = pathlib.Path(os.environ['TEST_CLIPBOARD']).read_text(encoding='utf-8')
 if os.environ.get('TEST_INVALID_UTF8'):
     sys.stdout.buffer.write(bytes([255]))
     sys.exit(0)
-if os.environ.get('TEST_CHANGE_AFTER_READ') and n > 1:
+if 'TEST_CHANGE_AFTER_READ' in os.environ and n > 1:
     text = os.environ['TEST_CHANGE_AFTER_READ']
+if 'TEST_CHANGE_AGAIN_AFTER_READ' in os.environ and n > 2:
+    text = os.environ['TEST_CHANGE_AGAIN_AFTER_READ']
 sys.stdout.buffer.write(text.encode('utf-8'))
 '''
         write = '''import os, pathlib, sys
@@ -151,6 +154,21 @@ pathlib.Path(os.environ['TEST_CLIPBOARD']).write_bytes(sys.stdin.buffer.read())
         self.assert_success(self.run_cli(['--wait']), 'C\tD\n3\t4\n')
         self.assertEqual(self.clipboard.read_text(), 'C\tD\n3\t4')
 
+    def test_wait_converts_the_observed_change_without_reading_again(self):
+        self.env['TEST_CHANGE_AFTER_READ'] = 'C,D\n3,4'
+        self.env['TEST_CHANGE_AGAIN_AFTER_READ'] = 'E,F\n5,6'
+        self.assert_success(self.run_cli(['--wait']), 'C\tD\n3\t4\n')
+        self.assertEqual(self.clipboard.read_text(), 'C\tD\n3\t4')
+        self.assertEqual(self.count.read_text(), '2')
+
+    def test_wait_reports_an_empty_changed_clipboard(self):
+        self.env['TEST_CHANGE_AFTER_READ'] = ''
+        result = self.run_cli(['--wait'])
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout, '')
+        self.assertEqual(result.stderr, 'slack-table: no table text found on the clipboard\n')
+        self.assertEqual(self.count.read_text(), '2')
+
     def test_clipboard_errors(self):
         self.env['TEST_CLIPBOARD_ERROR'] = '1'
         for flags in [['--clipboard'], ['--wait']]:
@@ -172,6 +190,7 @@ pathlib.Path(os.environ['TEST_CLIPBOARD']).write_bytes(sys.stdin.buffer.read())
         empty_path = self.root / 'empty'
         empty_path.mkdir()
         self.env['PATH'] = str(empty_path)
+        self.assert_success(self.run_cli(text='A,B'), 'A\tB\n')
         result = self.run_cli(['--copy'], 'A,B')
         self.assertEqual(result.returncode, 2)
         self.assertIn('no supported clipboard command', result.stderr)

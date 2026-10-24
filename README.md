@@ -153,7 +153,9 @@ final formatted = formatMarkdown(table);
 ```
 
 The API also exports `Table`, `formatTable`, `formatTsv`, `ParseError`, and
-`AmbiguousColumnsError`. Ambiguous input carries a `candidates` list so each
+`AmbiguousColumnsError`. `InputFormats` and `OutputFormats` provide shared string
+constants and `values` lists for frontend format choices; existing string
+arguments remain supported. Ambiguous input carries a `candidates` list so each
 frontend can obtain a column count and retry. Output strings do not include a
 terminal newline; the CLI adds one when printing. The core performs no I/O and
 does not import the CLI or clipboard implementation.

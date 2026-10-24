@@ -12,19 +12,18 @@ class ClipboardError implements Exception {
 
 /// Native text clipboard access. Kept out of the portable library's exports.
 class Clipboard {
-  Future<String> read() async => _run(_detectCommands().$1);
+  // Resolve lazily so commands that only print output need no clipboard tools.
+  late final _ClipboardCommands _commands = _detectCommands();
+
+  Future<String> read() async => _run(_commands.read);
 
   Future<void> write(String text) async {
-    await _run(_detectCommands().$2, input: text);
+    await _run(_commands.write, input: text);
   }
 
-  // Compare text itself: macOS `clipboard info` can be unchanged when different
-  // text of the same length is copied. Image changes are outside this adapter.
-  Future<String> signature() => read();
-
-  (List<String>, List<String>) _detectCommands() {
+  _ClipboardCommands _detectCommands() {
     if (Platform.isMacOS && _hasCommand('pbpaste') && _hasCommand('pbcopy')) {
-      return (['pbpaste'], ['pbcopy']);
+      return (read: ['pbpaste'], write: ['pbcopy']);
     }
     if (Platform.isWindows) {
       final powershell = _hasCommand('powershell')
@@ -34,8 +33,8 @@ class Clipboard {
               : null;
       if (powershell != null) {
         return (
-          [powershell, '-NoProfile', '-Command', 'Get-Clipboard -Raw'],
-          [
+          read: [powershell, '-NoProfile', '-Command', 'Get-Clipboard -Raw'],
+          write: [
             powershell,
             '-NoProfile',
             '-Command',
@@ -45,18 +44,18 @@ class Clipboard {
       }
     }
     if (_hasCommand('wl-paste') && _hasCommand('wl-copy')) {
-      return (['wl-paste', '--no-newline'], ['wl-copy']);
+      return (read: ['wl-paste', '--no-newline'], write: ['wl-copy']);
     }
     if (_hasCommand('xclip')) {
       return (
-        ['xclip', '-selection', 'clipboard', '-out'],
-        ['xclip', '-selection', 'clipboard', '-in'],
+        read: ['xclip', '-selection', 'clipboard', '-out'],
+        write: ['xclip', '-selection', 'clipboard', '-in'],
       );
     }
     if (_hasCommand('xsel')) {
       return (
-        ['xsel', '--clipboard', '--output'],
-        ['xsel', '--clipboard', '--input']
+        read: ['xsel', '--clipboard', '--output'],
+        write: ['xsel', '--clipboard', '--input']
       );
     }
     throw const ClipboardError('no supported clipboard command found');
@@ -89,25 +88,25 @@ class Clipboard {
   Future<String> _run(List<String> command, {String? input}) async {
     try {
       final process = await Process.start(command.first, command.sublist(1));
+      final exitCode = process.exitCode;
+      final outputText = process.stdout.transform(utf8.decoder).join();
+      final errorText = process.stderr.transform(utf8.decoder).join();
       // Listen to every I/O future immediately so decoder or broken-pipe
       // errors cannot escape while another stream is still completing.
-      final results = await Future.wait<Object?>([
-        process.exitCode,
-        process.stdout.transform(utf8.decoder).join(),
-        process.stderr.transform(utf8.decoder).join(),
-        () async {
-          if (input != null) process.stdin.write(input);
-          await process.stdin.close();
-          return null;
-        }(),
+      await Future.wait([
+        exitCode,
+        outputText,
+        errorText,
+        _writeInput(process.stdin, input),
       ]);
-      final result = results[0] as int;
-      final text = results[1] as String;
-      final error = results[2] as String;
-      if (result != 0) {
+      // All futures are complete; read each result with its original type.
+      final status = await exitCode;
+      final text = await outputText;
+      final error = await errorText;
+      if (status != 0) {
         final detail = error.trim().isNotEmpty ? error.trim() : text.trim();
         throw ClipboardError(detail.isEmpty
-            ? '${command.first} exited with status $result'
+            ? '${command.first} exited with status $status'
             : detail);
       }
       return text;
@@ -119,4 +118,11 @@ class Clipboard {
       throw ClipboardError(error.message);
     }
   }
+
+  Future<void> _writeInput(IOSink sink, String? text) async {
+    if (text != null) sink.write(text);
+    await sink.close();
+  }
 }
+
+typedef _ClipboardCommands = ({List<String> read, List<String> write});

@@ -1,5 +1,9 @@
 include: package:lints/recommended.yaml
 
+linter:
+  rules:
+    curly_braces_in_flow_control_structures: true
+
 plugins:
   jaspr_lints:
     version: ^0.7.2

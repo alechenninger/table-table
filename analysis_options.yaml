@@ -1,0 +1,11 @@
+include: package:lints/recommended.yaml
+
+analyzer:
+  exclude:
+    # The web package has its own dependencies and analysis step.
+    - apps/**
+    - build/**
+
+linter:
+  rules:
+    curly_braces_in_flow_control_structures: true
