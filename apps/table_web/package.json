@@ -1,0 +1,19 @@
+{
+  "name": "table-table-web",
+  "private": true,
+  "scripts": {
+    "build:css": "tailwindcss -i styles/app.css -o web/styles.css --minify",
+    "watch:css": "tailwindcss -i styles/app.css -o web/styles.css --watch",
+    "dev": "npm run build:css && concurrently --kill-others --names css,jaspr \"npm:watch:css\" \"dart run jaspr_cli:jaspr serve\"",
+    "build": "npm run build:css && dart run jaspr_cli:jaspr build"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "4.3.3",
+    "concurrently": "9.2.5",
+    "daisyui": "5.7.50",
+    "tailwindcss": "4.3.3"
+  }
+}

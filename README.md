@@ -1,44 +1,99 @@
-# slack-table
+# table-table
 
-Convert Markdown, CSV, TSV, Cursor canvas, or simple pipe-delimited tables into
-tab-separated rows that Slack pastes as a native table (default), or neatly
-formatted Markdown tables with `--output markdown`.
+Convert Markdown, CSV, TSV, Cursor canvas, Jira Rovo copies, or simple
+pipe-delimited tables into tab-separated rows for pasting into Slack, or padded
+Markdown tables.
 
-It can also extract a table from an image using local Tesseract OCR, then render
-the same Slack-native TSV.
+Paste a table into the Jaspr web app and copy it for Slack or Markdown. Conversion
+runs in your browser; table contents are not uploaded or saved.
 
-Slack's Block Kit table block is represented well by copied tab-separated rows:
-copying a rendered table from Block Kit Builder produces TSV, and pasting TSV
-into Slack creates the native table experience.
+The same Dart core powers the web app and the `table-table` CLI. The existing
+`slack-table` and `md-table` commands remain available: `table-table` and
+`slack-table` default to Slack TSV, while `md-table` defaults to Markdown.
+
+## Web app
+
+Requires Dart 3.10 or newer for Jaspr, and Node.js 20 or newer for the daisyUI
+and Tailwind CSS build. From this checkout:
+
+```sh
+cd apps/table_web
+dart pub get
+npm ci
+npm run dev
+```
+
+Open the local URL printed by Jaspr. Paste into the input, choose an output
+format, and copy. Column choices appear only when needed. If clipboard access
+is unavailable, the app exposes selectable output for manual copying.
+
+To create a static deployment:
+
+```sh
+npm run build
+```
+
+Serve `apps/table_web/build/jaspr/` with any static host. Use HTTPS outside
+localhost for browser clipboard access. No backend, accounts, external fonts,
+analytics, ads, or storage are configured.
+
+## Run or install
+
+Requires Dart 3.4 or newer. From this checkout:
+
+```sh
+dart pub get
+dart run bin/table_table.dart table.md
+dart run bin/md_table.dart table.csv
+```
+
+Install all three commands into Dart's global executable directory:
+
+```sh
+dart pub global activate --source path .
+```
+
+Add Dart's global executable directory to your `PATH` if needed (normally
+`$HOME/.pub-cache/bin` on macOS/Linux). If the Python version is already
+installed, ensure the Dart commands appear first on your `PATH`.
+
+Alternatively, build standalone executables that do not require Python or a
+Dart SDK at runtime:
+
+```sh
+mkdir -p build
+dart compile exe bin/slack_table.dart -o build/slack-table
+dart compile exe bin/md_table.dart -o build/md-table
+dart compile exe bin/table_table.dart -o build/table-table
+./build/table-table table.md
+```
 
 ## Usage
 
 ```sh
-# Pipe input, print Slack table paste data.
+# Pipe input and print Slack table paste data.
 cat table.md | slack-table
 
-# Pipe input and copy the result.
+# Pipe input and copy the result too.
 cat table.md | slack-table --copy
 
-# Fast mode: copy a raw table, run this, then paste into Slack.
+# With an interactive terminal, read the clipboard and replace it with output.
 slack-table
 
-# Wait for the next clipboard change, convert it, copy the result, and exit.
+# Explicitly use the clipboard, even when stdin is redirected.
+slack-table --clipboard
+
+# Wait for clipboard text to change, convert it, copy it, and exit.
 slack-table --wait -q
 
-# Read a file.
+# Read files; - reads stdin among the files.
 slack-table table.md
+slack-table header.csv - < body.csv
 
-# Format as Markdown, or copy Markdown using the same clipboard workflow.
+# Render Markdown instead of Slack TSV.
 slack-table table.csv --output markdown
-slack-table --wait -q --output markdown
-
-# The md-table command defaults to Markdown with all the same options.
 md-table table.csv
 md-table --wait -q
-
-# Extract a table from an image.
-slack-table --image table.png
 ```
 
 Example input:
@@ -50,7 +105,7 @@ Example input:
 | Data 2A | Data 2B |
 ```
 
-Clipboard/output:
+Default output (columns are separated by tabs):
 
 ```text
 Header A	Header B
@@ -58,10 +113,7 @@ Data 1A	Data 1B
 Data 2A	Data 2B
 ```
 
-Paste that into Slack to get a native Slack table.
-
-Use `--output markdown` to get padded Markdown instead, with the first row as
-the header:
+With `--output markdown`:
 
 ```md
 | Header A | Header B |
@@ -70,74 +122,94 @@ the header:
 | Data 2A  | Data 2B  |
 ```
 
-Use `--output slack` to explicitly select the default Slack output. The output
-option works with every input mode and applies to both stdout and the clipboard.
+Use `--input markdown`, `--input cursor`, `--input csv`, `--input tsv`,
+`--input pipe`, or `--input spaced` to force a parser. The default is `auto`.
+For blank-line-separated cells with multiple possible column counts, interactive
+input prompts for a choice. Use `--columns N` in scripts or pipelines.
 
-## Install locally
+File and piped input print to stdout; add `--copy` to also copy the result.
+Interactive clipboard input, `--clipboard` (alias `--clip`), and `--wait` copy
+the result by default. `--quiet` (`-q`) suppresses stdout, but leaves errors on
+stderr. An empty clipboard in interactive mode falls back to terminal paste,
+finished with Ctrl-D. Successful commands exit with 0, input/usage/clipboard
+errors with 2, and Ctrl-C with 130. Run `--help` for options.
 
-Installing this package provides both `slack-table` and `md-table`.
+Text clipboard integration uses `pbpaste`/`pbcopy` on macOS, PowerShell on
+Windows, and `wl-paste`/`wl-copy`, `xclip`, or `xsel` on Linux. `--wait` compares
+clipboard text, including changes that keep the same text length.
 
-```sh
-brew install tesseract
-python3 -m pip install -e .
+## Reuse the core
+
+```dart
+import 'package:slack_table/slack_table.dart';
+
+final output = render('Name,Count\nAlpha,12');
+final markdown = render('Name,Count\nAlpha,12', outputFormat: 'markdown');
+
+final table = parseTable('Name,Count\nAlpha,12', inputFormat: 'csv');
+final rows = table.rows;
+final detectedFormat = table.sourceFormat;
+final formatted = formatMarkdown(table);
 ```
 
-With `pipx`, install Tesseract first and then install or reinstall the app so
-the `tesserocr` dependency is added to the `pipx` environment:
+The API also exports `Table`, `formatTable`, `formatTsv`, `ParseError`, and
+`AmbiguousColumnsError`. Ambiguous input carries a `candidates` list so each
+frontend can obtain a column count and retry. Output strings do not include a
+terminal newline; the CLI adds one when printing. The core performs no I/O and
+does not import the CLI or clipboard implementation.
+
+Parsing order, whitespace normalization, CSV quoting, and Markdown padding
+preserve the Python behavior. Markdown widths count Unicode code points, not
+terminal display columns or grapheme clusters.
+
+## Test
+
+After `dart pub get`, run the core contracts directly in Dart:
 
 ```sh
-brew install tesseract
-pipx uninstall slack-table
-pipx install -e .
+dart test
 ```
 
-You can also run it without installing:
+The 28 tests in `test/core_test.dart` and `test/core_regressions_test.dart`
+preserve the Python tests' inputs, expected outputs, and error assertions. They
+call the Dart library directly, without Python or subprocesses. Both suites
+passed against Dart before the temporary Python-to-Dart bridge was removed.
+
+For the full check, including CLI subprocess contracts and the retained Python
+reference suite, use Python 3.9+ (no third-party Python packages are needed):
 
 ```sh
-PYTHONPATH=/path/to/slack-table/src python3 -m slack_table < table.md
+python3 tool/check.py
 ```
 
-## Input Formats
+This checks formatting and static analysis, runs the Dart core tests, builds both
+legacy CLIs and `table-table`, then runs:
 
-`slack-table` auto-detects Markdown tables, Cursor canvas copies, Jira Rovo
-tables copied as blank-line-separated cells, TSV, CSV, and simple pipe-delimited
-rows. Use `--input markdown`, `--input cursor`,
-`--input csv`, `--input tsv`, `--input pipe`, or `--input spaced` to force a
-parser. When more than one column count fits blank-line-separated cells, the
-interactive command prompts with the valid choices; use `--columns N` to select
-one explicitly in scripts or pipelines.
+1. The original Python suite plus additional migration regression cases against
+   the retained Python implementation.
+2. Python CLI subprocess contracts using temporary clipboard commands and POSIX
+   terminals, without reading or changing your actual clipboard. This harness
+   runs on macOS/Linux; Windows clipboard integration has not been verified.
+3. Browser compilation of the public core API. If Node is installed, the
+   resulting JavaScript also runs a smoke test.
 
-Piped input and file input write the selected format to stdout. Interactive
-clipboard input and `--wait` copy it back to the clipboard by default.
+The original Python tests remain in `tests/` as reference coverage for the
+retained implementation. Dart CLI behavior is checked independently through
+`tests/cli_contract/`, which invokes the real compiled executables. The original
+CLI/clipboard/OCR mock-based tests only exercise the Python implementation.
 
-Image input uses `--image path/to/table.png` and runs locally. Supported image
-files are PNG, JPEG, WEBP, and GIF. On macOS, the interactive clipboard modes
-also detect an image on the clipboard automatically, so copying a table
-screenshot and running `slack-table` or `slack-table --wait -q` works without
-writing the image to a file first. Other operating systems report that image
-clipboard input is unsupported.
+For Jaspr's component tests, run `dart test` in `apps/table_web`. After installing
+Dart dependencies in both packages and running `npm ci` in `apps/table_web`,
+`python3 tool/check.py --web` runs the complete
+check, including Jaspr analysis, component tests, and a production web build.
 
-Image OCR uses the `tesserocr` Python package, which is installed with
-`slack-table`. Install Tesseract's native libraries before installing the
-package. If embedded OCR is unavailable at runtime, `slack-table --image` falls
-back to the `tesseract` command on `PATH`.
+## Python reference and OCR
 
-```sh
-# Force embedded OCR or the command-line fallback.
-slack-table --image table.png --image-engine tesserocr
-slack-table --image table.png --image-engine tesseract
-```
+The original implementation remains in `src/slack_table`, with its original
+tests and packaging, as the migration reference. Its image/OCR functionality is
+**not ported to Dart**. The Dart CLI currently accepts text input only and does
+not require Tesseract. See [the Python reference instructions](docs/python-reference.md)
+to use the previous implementation, including its optional runtime OCR paths.
 
-Use `--image-lang` to choose Tesseract languages, for example `eng+fra`, and
-`--image-psm` to tune page segmentation mode. The default page segmentation mode
-is `6`, which works well for many simple table screenshots.
-
-## Shortcut
-
-For the fastest flow, add an alias:
-
-```sh
-alias st='slack-table --wait -q'
-```
-
-Then copy a raw table, run `st`, and paste into Slack.
+When OCR is added to Dart, it can supply a `Table` to the same formatters. Engine
+integration and image access can remain outside the portable text core.

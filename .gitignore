@@ -7,3 +7,7 @@ build/
 dist/
 *.egg-info/
 .venv/
+.dart_tool/
+*.client.options.dart
+node_modules/
+apps/table_web/web/styles.css
