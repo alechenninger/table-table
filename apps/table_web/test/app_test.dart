@@ -19,8 +19,8 @@ void main() {
     await _enter(tester, 'Name,Count\nAda,12');
     expect(find.tag('table'), findsOneComponent);
     expect(find.text('Ada'), findsOneComponent);
-    expect(find.text('2 rows · 2 columns'), findsOneComponent);
-    expect(find.text('CSV detected'), findsOneComponent);
+    expect(find.text('1 data row · 2 columns'), findsOneComponent);
+    expect(find.text('Auto: CSV'), findsOneComponent);
     await tester.click(_button('copy-output'));
     expect(copied, 'Name\tCount\nAda\t12');
     expect(find.text('Table preserved.'), findsOneComponent);
@@ -46,10 +46,10 @@ void main() {
     expect(find.text('Columns'), findsOneComponent);
     expect(_copyButton().disabled, isTrue);
     await tester.click(find.componentWithText(button, '3'));
-    expect(find.text('4 rows · 3 columns'), findsOneComponent);
+    expect(find.text('3 data rows · 3 columns'), findsOneComponent);
     expect(_copyButton().disabled, isFalse);
     await tester.click(find.componentWithText(button, '4'));
-    expect(find.text('3 rows · 4 columns'), findsOneComponent);
+    expect(find.text('2 data rows · 4 columns'), findsOneComponent);
     await _enter(tester, List.generate(12, (index) => 'new $index').join('\n\n'));
     expect(_copyButton().disabled, isTrue);
   });
@@ -63,7 +63,7 @@ void main() {
     expect(_copyButton().disabled, isTrue);
 
     await tester.click(find.componentWithText(button, '3'));
-    expect(find.text('2 rows · 3 columns'), findsOneComponent);
+    expect(find.text('1 data row · 3 columns'), findsOneComponent);
     await tester.click(_button('copy-output'));
     expect(copied, '| A   | B   | C   |\n| --- | --- | --- |\n| 1   | 2   | 3   |');
 
@@ -76,7 +76,7 @@ void main() {
     expect(copied, 'A\tB\tC\n1\t2\t3');
 
     await tester.click(find.componentWithText(button, '2'));
-    expect(find.text('3 rows · 2 columns'), findsOneComponent);
+    expect(find.text('2 data rows · 2 columns'), findsOneComponent);
     await tester.click(_button('copy-output'));
     expect(copied, 'A\tB\nC\t1\n2\t3');
   });
@@ -85,7 +85,7 @@ void main() {
     tester.pumpComponent(TableApp(copyText: (_) async {}));
     await _enter(tester, 'A,B\n1,2');
     await _enter(tester, 'not a table');
-    expect(find.text('CSV detected'), findsNothing);
+    expect(find.text('Auto: CSV'), findsNothing);
     expect(find.tag('table'), findsNothing);
     expect(_copyButton().disabled, isTrue);
     expect(
@@ -100,27 +100,125 @@ void main() {
     tester.pumpComponent(TableApp(copyText: (_) async {}));
     await _enter(tester, 'A,B\n1,2');
     final picker = find.byType(select).evaluate().single.component as select;
-    expect(find.text('CSV detected'), findsOneComponent);
+    expect(find.text('Auto: CSV'), findsOneComponent);
     picker.onChange!(['markdown']);
     await tester.pump();
     expect(_copyButton().disabled, isTrue);
     (find.byType(select).evaluate().single.component as select).onChange!(['csv']);
     await tester.pump();
     expect(_copyButton().disabled, isFalse);
-    expect(find.text('CSV detected'), findsNothing);
+    expect(find.text('Auto: CSV'), findsNothing);
   });
 
-  testComponents('example and clear update both panes', (tester) async {
-    tester.pumpComponent(TableApp(copyText: (_) async {}));
-    await tester.click(find.componentWithText(button, 'Try an example'));
-    expect(find.text('Engineering'), findsOneComponent);
-    expect(find.text('Markdown detected'), findsOneComponent);
-    expect(_copyButton().disabled, isFalse);
-    await tester.click(find.componentWithText(button, 'Clear'));
+  for (final example in [
+    (
+      source: 'From Google Sheets',
+      format: 'TSV',
+      output: 'Name\tRole\nAda\tEngineering\nSam\tDesign',
+    ),
+    (
+      source: 'From markdown',
+      format: 'Markdown',
+      output: 'Day\tPlan\nSaturday\tFarmers market\nSunday\tHike',
+    ),
+    (
+      source: 'From ChatGPT app',
+      format: 'TSV',
+      output: 'Task\tStatus\nDraft proposal\tDone\nReview\tIn progress',
+    ),
+  ]) {
+    testComponents('${example.source} example and clear update both panes', (tester) async {
+      String? copied;
+      tester.pumpComponent(TableApp(copyText: (text) async => copied = text));
+      expect(find.text('From'), findsNothing);
+      expect(find.text('To'), findsNothing);
+      // Loading an example restores auto-detection after a manual format choice.
+      (find.byType(select).evaluate().single.component as select).onChange!(['csv']);
+      await tester.pump();
+      await tester.click(find.componentWithText(button, 'Try an example'));
+      expect(find.tag('table'), findsNothing);
+      await tester.click(find.componentWithText(button, example.source));
+      expect(find.text('Auto: ${example.format}'), findsOneComponent);
+      expect(find.text('2 data rows · 2 columns'), findsOneComponent);
+      expect(_copyButton().disabled, isFalse);
+      await tester.click(_button('copy-output'));
+      expect(copied, example.output);
+      await tester.click(find.componentWithText(button, 'Clear input'));
+      expect(find.tag('table'), findsNothing);
+      expect(_copyButton().disabled, isTrue);
+      expect(find.text('Clear input'), findsNothing);
+      expect(find.text('Auto: ${example.format}'), findsNothing);
+    });
+  }
+
+  testComponents('undo clear restores exact input and its source format', (tester) async {
+    String? copied;
+    tester.pumpComponent(TableApp(copyText: (text) async => copied = text));
+    const input = 'Name,Count\nAda,12\n';
+    await _enter(tester, input);
+    (find.byType(select).evaluate().single.component as select).onChange!(['csv']);
+    await tester.pump();
+    await tester.click(_button('input-action'));
+    expect(find.text('Undo clear'), findsOneComponent);
+    expect(find.text('Input cleared. Use Undo clear to restore it.'), findsOneComponent);
     expect(find.tag('table'), findsNothing);
     expect(_copyButton().disabled, isTrue);
-    expect(find.text('Clear'), findsNothing);
-    expect(find.text('Markdown detected'), findsNothing);
+
+    // Undo restores parsing settings but respects the current output destination.
+    (find.byType(select).evaluate().single.component as select).onChange!(['tsv']);
+    await tester.pump();
+    await tester.click(_button('output-markdown'));
+    await tester.click(_button('input-action'));
+    expect(find.text('Undo clear'), findsNothing);
+    expect(find.text('Clear input'), findsOneComponent);
+    expect(find.text(input), findsOneComponent);
+    expect((find.byType(select).evaluate().single.component as select).value, 'csv');
+    await tester.click(_button('copy-output'));
+    expect(copied, '| Name | Count |\n| ---- | ----- |\n| Ada  | 12    |');
+  });
+
+  testComponents('undo clear restores a chosen column count', (tester) async {
+    tester.pumpComponent(TableApp(copyText: (_) async {}));
+    await _enter(tester, 'A\n\nB\n\nC\n\n1\n\n2\n\n3');
+    await tester.click(find.componentWithText(button, '3'));
+    await tester.click(_button('input-action'));
+    await tester.click(_button('input-action'));
+    expect(find.text('1 data row · 3 columns'), findsOneComponent);
+    final selected = find.componentWithText(button, '3').evaluate().single.component as button;
+    expect(selected.attributes?['aria-pressed'], 'true');
+    expect(_copyButton().disabled, isFalse);
+  });
+
+  for (final useExample in [false, true]) {
+    testComponents('new input replaces undo history (example: $useExample)', (tester) async {
+      tester.pumpComponent(TableApp(copyText: (_) async {}));
+      await _enter(tester, 'Old,Value\nBefore,1');
+      await tester.click(_button('input-action'));
+      if (useExample) {
+        await tester.click(find.componentWithText(button, 'From Google Sheets'));
+      } else {
+        await _enter(tester, 'New,Value\nAfter,2');
+      }
+      expect(find.text('Undo clear'), findsNothing);
+      await tester.click(_button('input-action'));
+      await tester.click(_button('input-action'));
+      expect(find.text('Before'), findsNothing);
+      expect(find.text(useExample ? 'Ada' : 'After'), findsOneComponent);
+    });
+  }
+
+  testComponents('undo clear cannot restore an obsolete pending copy status', (tester) async {
+    final pending = Completer<void>();
+    tester.pumpComponent(TableApp(copyText: (_) => pending.future));
+    await _enter(tester, 'A,B\n1,2');
+    await tester.click(_button('copy-output'));
+    await tester.click(_button('input-action'));
+    await tester.click(_button('input-action'));
+    pending.complete();
+    await tester.pump();
+    expect(find.text('Table preserved.'), findsNothing);
+    expect(_copyButton().disabled, isFalse);
+    expect(find.tag('table'), findsOneComponent);
   });
 
   testComponents('clipboard failure offers the exact output for manual copy', (tester) async {

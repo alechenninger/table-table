@@ -4,78 +4,22 @@
 
 @plugin "daisyui" {
   themes: nord --default, dim --prefersdark;
-  include: button, select, textarea, table, join;
+  include: button, select, textarea, table;
   logs: false;
 }
 
 @layer base {
   body {
-    min-height: 100vh;
-    background: var(--color-base-200);
-    color: var(--color-base-content);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    font-size: 15px;
-  }
-
-  [tabindex]:focus-visible {
-    outline: 2px solid var(--color-primary);
-    outline-offset: 3px;
+    @apply min-h-screen bg-base-200 font-sans text-base leading-normal text-base-content;
   }
 }
 
-/* App layout stays separate from daisyUI control styling. */
-.app { max-width: 1120px; margin: 0 auto; padding: 48px 32px 64px; }
-.hero-divider { margin: 36px 0 32px; border: 0; border-top: 1px solid color-mix(in oklab, var(--color-base-content) 22%, transparent); }
-.wordmark { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; letter-spacing: -0.4px; color: color-mix(in oklab, var(--color-base-content) 70%, transparent); }
-.app h1 { margin-top: 28px; font-size: clamp(24px, 5.8vw, 68px); font-weight: 650; line-height: 1.1; letter-spacing: -0.045em; white-space: nowrap; }
-.intro { margin-top: 12px; max-width: 600px; font-size: 22px; color: var(--color-base-content); line-height: 1.5; }
-.workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  background: var(--color-base-100);
-  border: 1px solid var(--color-base-300);
-  border-radius: var(--radius-box);
-  overflow: hidden;
-}
-.pane { min-width: 0; display: flex; flex-direction: column; padding: 20px; }
-.input-pane { border-bottom: 1px solid var(--color-base-300); }
-.pane-heading { display: flex; align-items: center; justify-content: space-between; min-height: 38px; gap: 12px; margin-bottom: 16px; }
-.pane-heading label { font-weight: 600; }
-.input-heading { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
-.detected-format { display: inline-flex; align-items: baseline; gap: 5px; font-size: 12px; line-height: 1.4; color: color-mix(in oklab, var(--color-base-content) 80%, transparent); }
-.detected-format:empty { display: none; }
-.detection-check { color: var(--color-success); }
-.input-format { width: 160px; }
-.output-format { width: 100%; border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent); }
-.output-format > .btn { flex: 1; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: color-mix(in oklab, var(--color-base-content) 80%, transparent); font-size: 14px; font-weight: 500; }
-.output-format > .btn[aria-pressed="true"] { color: var(--color-base-content); font-weight: 650; box-shadow: inset 0 -2px var(--color-base-content); }
-.output-format > .btn:hover { background: color-mix(in oklab, var(--color-base-content) 6%, transparent); }
-.table-input, .preview pre { font: 13px/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; tab-size: 4; }
-.table-input { width: 100%; min-height: 240px; padding: 14px; field-sizing: content; resize: vertical; }
-.preview-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
-.preview { min-width: 0; min-height: 64px; overflow: auto; }
-.empty-preview { margin: 14px 0; color: color-mix(in oklab, var(--color-base-content) 65%, transparent); font-size: 13px; }
-.preview pre { margin: 0; padding: 14px 0; overflow: auto; }
-.table-scroll { max-width: 100%; overflow: auto; padding: 2px; }
-.table :where(th, td) { min-width: 72px; max-width: 360px; overflow-wrap: anywhere; vertical-align: top; }
-.pane-footer { margin-top: auto; padding-top: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.table-size { color: color-mix(in oklab, var(--color-base-content) 65%, transparent); font-size: 12px; }
-.copy-button { min-width: 86px; }
-.input-feedback:empty, .copy-feedback:empty { display: none; }
-.error { color: var(--color-error); font-size: 13px; line-height: 1.5; margin: 12px 0 0; }
-.column-choice { display: flex; align-items: center; gap: 12px; margin-top: 12px; font-size: 13px; }
-.column-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
-.about { margin-top: 24px; font-size: 13px; line-height: 1.65; color: color-mix(in oklab, var(--color-base-content) 70%, transparent); }
-.about summary { width: fit-content; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
-.about summary:hover { color: var(--color-primary); }
-.about summary:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
-.about p { margin-top: 12px; max-width: 52ch; }
-
-@media (max-width: 720px) {
-  .app { padding: 28px 16px; }
-  .hero-divider { margin: 28px 0 24px; }
-  .app h1 { margin-top: 24px; }
-  .pane { padding: 16px; }
-  .table-input { min-height: 220px; font-size: 16px; line-height: 1.5; }
-  .input-format { font-size: 16px; width: 170px; }
+/* Native popover positioning; its appearance and open state use utilities. */
+#example-trigger { anchor-name: --example-trigger; }
+.example-sources {
+  position-anchor: --example-trigger;
+  inset: auto;
+  top: anchor(bottom);
+  left: anchor(left);
+  position-try-fallbacks: flip-block, flip-inline;
 }
