@@ -35,13 +35,71 @@ void main() {
     );
   });
 
-  test('unicode markdown width counts code points', () {
+  test('unicode markdown width counts display columns', () {
     expect(
       formatMarkdown(Table([
         ['😀', 'e\u0301'],
         ['😀😀😀😀', 'x'],
       ])),
-      '| 😀    | e\u0301  |\n| ---- | --- |\n| 😀😀😀😀 | x   |',
+      '| 😀       | e\u0301   |\n| -------- | --- |\n| 😀😀😀😀 | x   |',
+    );
+  });
+
+  test('markdown aligns CJK names with Latin text', () {
+    expect(
+      formatMarkdown(Table([
+        ['ID', 'Project', 'Owner', 'City', 'Status', 'Score'],
+        [
+          'REC-00003',
+          'Kubernetes Fleet',
+          '李明',
+          'São Paulo',
+          'Blocked',
+          '0.411'
+        ],
+        ['REC-00004', '東京', '山田太郎', '上海', 'Done', '1'],
+      ])),
+      '| ID        | Project          | Owner    | City      | Status  | Score |\n'
+      '| --------- | ---------------- | -------- | --------- | ------- | ----- |\n'
+      '| REC-00003 | Kubernetes Fleet | 李明     | São Paulo | Blocked | 0.411 |\n'
+      '| REC-00004 | 東京             | 山田太郎 | 上海      | Done    | 1     |',
+    );
+  });
+
+  test('markdown aligns fullwidth, halfwidth and supplementary CJK text', () {
+    expect(
+      formatMarkdown(Table([
+        ['ＡＢ', 'ｶﾅ', '𠮷野'],
+        ['abc', 'abc', 'abc'],
+      ])),
+      '| ＡＢ | ｶﾅ  | 𠮷野 |\n'
+      '| ---- | --- | ---- |\n'
+      '| abc  | abc | abc  |',
+    );
+  });
+
+  test('markdown aligns emoji sequences as single wide glyphs', () {
+    expect(
+      formatMarkdown(Table([
+        ['👩🏽‍💻', '🇯🇵', '❤️'],
+        ['abc', 'abc', 'abc'],
+      ])),
+      '| 👩🏽‍💻  | 🇯🇵  | ❤️  |\n'
+      '| --- | --- | --- |\n'
+      '| abc | abc | abc |',
+    );
+  });
+
+  test('markdown measures escaped Unicode source without changing cell text',
+      () {
+    expect(
+      formatMarkdown(Table([
+        ['李|明', 'e\u0301\\x'],
+        ['abc', 'é'],
+      ])),
+      '| 李\\|明 | e\u0301\\\\x |\n'
+      '| ------ | ---- |\n'
+      '| abc    | é    |',
     );
   });
 

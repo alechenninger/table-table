@@ -6,10 +6,10 @@ void main() {
   final output = render('Name,Count\nAlpha,12');
   if (output != 'Name\tCount\nAlpha\t12') throw StateError(output);
   final markdown = formatMarkdown(Table([
-    ['😀', 'B'],
+    ['李明', 'e\u0301'],
     ['x', 'y']
   ]));
-  if (markdown != '| 😀   | B   |\n| --- | --- |\n| x   | y   |') {
+  if (markdown != '| 李明 | e\u0301   |\n| ---- | --- |\n| x    | y   |') {
     throw StateError(markdown);
   }
   try {

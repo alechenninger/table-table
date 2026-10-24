@@ -36,8 +36,17 @@ with `px-2 py-1` for a more compact footprint. Both use `btn-outline` with a sub
 Pane padding grows from `p-4` to `sm:p-6`;
 the copy toolbar stacks below `sm` instead of shrinking its labels. Buttons use
 auto height so enlarged text can grow. Wide table content scrolls inside its
-preview, while headings and surrounding controls can wrap. Keep these proportions
+preview, while headings and surrounding controls can wrap. The editor grows up
+to `max-h-80` (20rem), and both Inspect previews grow up to `max-h-96` (24rem)
+before scrolling within the element. The manual-copy editor shares the input
+editor's cap. The Slack table uses `w-max` so columns size to their content
+instead of squeezing into the pane, with cell widths between 6rem and 22.5rem;
+long cells wrap at that upper limit. Keep these proportions
 when adding controls and check both sides of the `sm` breakpoint plus 320px reflow.
+
+The Markdown preview reserves two monospace columns for wide CJK and emoji
+graphemes, so fallback font metrics do not shift the following pipes. These
+presentation spans preserve the exact output text for selection and copying.
 
 Clear input becomes Undo clear until the user enters new text or loads an example.
 Undo restores the original input, source format, and column choice while retaining

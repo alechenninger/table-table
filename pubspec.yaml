@@ -8,6 +8,7 @@ environment:
 
 dependencies:
   args: ^2.7.0
+  string_width: ^0.1.5
 
 dev_dependencies:
   lints: ^4.0.0

@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'package:string_width/string_width.dart';
+
 import 'formats.dart';
 
 class ParseError implements Exception {
@@ -100,7 +102,7 @@ String formatTsv(Table table) {
   return rows.map((row) => row.join('\t')).join('\n');
 }
 
-/// Render padded Markdown, using the first row as the header.
+/// Render Markdown padded to display columns, using the first row as the header.
 String formatMarkdown(Table table) {
   final rows = _normalized(table.rows);
   if (rows.isEmpty || rows.first.isEmpty) {
@@ -110,11 +112,12 @@ String formatMarkdown(Table table) {
     for (final row in rows) [for (final cell in row) _escapeMarkdownCell(cell)],
   ];
   final columnWidths = List.filled(escapedRows.first.length, 3);
-  // Python measures code points, not UTF-16 units or visual display width.
+  // Measure escaped source: wide glyphs occupy two columns, while combining
+  // marks share a column with their base character.
   for (final row in escapedRows) {
     for (var column = 0; column < row.length; column++) {
       columnWidths[column] =
-          math.max(columnWidths[column], row[column].runes.length);
+          math.max(columnWidths[column], stringWidth(row[column]));
     }
   }
   final separator = [for (final width in columnWidths) '-' * width];
@@ -144,7 +147,7 @@ String _formatMarkdownRow(List<String> row, List<int> columnWidths) {
   final paddedCells = <String>[];
   for (var column = 0; column < row.length; column++) {
     final cell = row[column];
-    final padding = columnWidths[column] - cell.runes.length;
+    final padding = columnWidths[column] - stringWidth(cell);
     paddedCells.add(cell + ' ' * padding);
   }
   return '| ${paddedCells.join(' | ')} |';

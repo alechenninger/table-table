@@ -1,6 +1,8 @@
+import 'package:characters/characters.dart';
 import 'package:jaspr/dom.dart';
 import 'package:jaspr/jaspr.dart';
 import 'package:slack_table/slack_table.dart' as tables;
+import 'package:string_width/string_width.dart';
 
 import 'conversion.dart';
 
@@ -28,10 +30,10 @@ enum _CopyStatus {
 class _TableAppState extends State<TableApp> {
   // Reuse complete utility names so Tailwind can discover every class.
   static const _tableInputClasses =
-      'textarea table-input w-full min-h-36 resize-y field-sizing-content p-3 '
+      'textarea table-input w-full min-h-36 max-h-80 resize-y field-sizing-content overflow-auto p-3 '
       'font-mono text-base leading-6 [tab-size:4] sm:p-4';
   static const _tableCellClasses =
-      'min-w-18 max-w-90 px-3 py-2 align-top whitespace-normal wrap-anywhere';
+      'min-w-24 max-w-90 px-3 py-2 align-top whitespace-normal wrap-anywhere';
   static const _secondaryActionClasses =
       'btn btn-outline min-h-9 h-auto border-base-content/20 px-2 py-1 '
       'text-sm leading-6 font-medium text-base-content/70 '
@@ -318,8 +320,8 @@ class _TableAppState extends State<TableApp> {
     final parsedTable = _table;
     return div(
       classes: parsedTable == null
-          ? 'preview min-w-0 overflow-auto grid min-h-24 place-items-center'
-          : 'preview min-w-0 overflow-auto',
+          ? 'preview min-w-0 grid min-h-24 place-items-center'
+          : 'preview min-w-0',
       [
         if (parsedTable == null)
           p(classes: 'empty-preview m-4 text-center text-sm leading-6 text-base-content/65', [
@@ -342,17 +344,17 @@ class _TableAppState extends State<TableApp> {
         else if (_outputFormat == tables.OutputFormats.markdown)
           pre(
             classes:
-                'm-0 overflow-auto p-3 font-mono text-base leading-6 [tab-size:4] focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2 sm:p-4',
+                'm-0 max-h-96 max-w-full overflow-auto p-3 font-mono text-base leading-6 [tab-size:4] focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2 sm:p-4',
             attributes: {'tabindex': '0', 'aria-label': 'Markdown output'},
-            [.text(_output)],
+            [..._buildMarkdownText()],
           )
         else
           div(
             classes:
-                'table-scroll max-w-full overflow-auto p-0.5 focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2',
+                'table-scroll max-h-96 max-w-full overflow-auto p-0.5 focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2',
             attributes: {'tabindex': '0', 'aria-label': 'Slack table preview'},
             [
-              table(classes: 'table w-auto text-base leading-6', [
+              table(classes: 'table w-max text-base leading-6', [
                 thead(classes: 'text-base', [
                   tr([
                     for (final cell in parsedTable.rows.first)
@@ -370,6 +372,24 @@ class _TableAppState extends State<TableApp> {
           ),
       ],
     );
+  }
+
+  Iterable<Component> _buildMarkdownText() sync* {
+    final text = StringBuffer();
+    for (final character in _output.characters) {
+      // Fallback CJK and emoji fonts may not be exactly twice as wide as the
+      // monospace font. Keep their glyphs on the same grid as the padding.
+      if (character.codeUnitAt(0) > 127 && stringWidth(character) == 2) {
+        if (text.isNotEmpty) {
+          yield Component.text(text.toString());
+          text.clear();
+        }
+        yield span(classes: 'inline-block w-[2ch] text-center', [.text(character)]);
+      } else {
+        text.write(character);
+      }
+    }
+    if (text.isNotEmpty) yield Component.text(text.toString());
   }
 
   Component _buildTableSize() {

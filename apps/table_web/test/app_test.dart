@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:jaspr/dom.dart';
+import 'package:jaspr/jaspr.dart' show Text;
 import 'package:jaspr_test/jaspr_test.dart';
 import 'package:table_table_web/app.dart';
 
@@ -52,6 +53,26 @@ void main() {
     expect(find.text('2 data rows · 4 columns'), findsOneComponent);
     await _enter(tester, List.generate(12, (index) => 'new $index').join('\n\n'));
     expect(_copyButton().disabled, isTrue);
+  });
+
+  testComponents('Unicode preview preserves the exact Markdown source when copied', (tester) async {
+    String? copied;
+    tester.pumpComponent(TableApp(copyText: (text) async => copied = text));
+    await _enter(tester, 'Owner\tCity\tStatus\n李明\tSão Paulo\t👩🏽‍💻\n山田太郎\t東京\te\u0301');
+    await tester.click(_button('output-markdown'));
+    final previewText = find
+        .descendant(of: find.tag('pre'), matching: find.byType(Text))
+        .evaluate()
+        .map((element) => (element.component as Text).text)
+        .join();
+    const markdown =
+        '| Owner    | City      | Status |\n'
+        '| -------- | --------- | ------ |\n'
+        '| 李明     | São Paulo | 👩🏽‍💻     |\n'
+        '| 山田太郎 | 東京      | e\u0301      |';
+    expect(previewText, markdown);
+    await tester.click(_button('copy-output'));
+    expect(copied, markdown);
   });
 
   testComponents('output switches preserve unresolved and selected column choices', (tester) async {

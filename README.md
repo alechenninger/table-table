@@ -198,8 +198,9 @@ frontend can obtain a column count and retry. Output strings do not include a
 terminal newline; the CLI adds one when printing. The core performs no I/O and
 does not import the CLI or clipboard implementation.
 
-Markdown widths count Unicode code points, not
-terminal display columns or grapheme clusters.
+Markdown padding uses Unicode display columns, accounting for wide CJK text,
+combining marks, and emoji sequences. Exact visual alignment still depends on
+the destination's font and Unicode rendering.
 
 ## Test
 
