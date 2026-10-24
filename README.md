@@ -47,26 +47,64 @@ dart run bin/table_table.dart table.md
 dart run bin/md_table.dart table.csv
 ```
 
-Install all three commands into Dart's global executable directory:
+### Install native commands globally (macOS/Linux)
+
+Requires Make and Dart on your `PATH`. From the repository root, build all three
+native commands:
 
 ```sh
-dart pub global activate --source path .
+make
 ```
 
-Add Dart's global executable directory to your `PATH` if needed (normally
-`$HOME/.pub-cache/bin` on macOS/Linux). If the Python version is already
-installed, ensure the Dart commands appear first on your `PATH`.
-
-Alternatively, build standalone executables that do not require Python or a
-Dart SDK at runtime:
+`make` fetches Dart dependencies and compiles the executables into `build/`.
+Install them into `$HOME/.local/bin` so they are available from any directory
+for your user:
 
 ```sh
-mkdir -p build
-dart compile exe bin/slack_table.dart -o build/slack-table
-dart compile exe bin/md_table.dart -o build/md-table
-dart compile exe bin/table_table.dart -o build/table-table
-./build/table-table table.md
+make install PREFIX="$HOME/.local"
 ```
+
+Add this line to your shell configuration (`~/.zshrc` for zsh or `~/.bashrc` for
+bash; use `~/.bash_profile` for a macOS bash login shell), and run it in your
+current terminal too:
+
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Verify the installation:
+
+```sh
+command -v table-table slack-table md-table
+table-table --version
+slack-table --version
+md-table --version
+```
+
+These are real executables; shell aliases are unnecessary. `table-table` and
+`slack-table` default to Slack TSV, and `md-table` defaults to Markdown.
+[Native Dart executables](https://dart.dev/tools/dart-compile#exe) include their
+runtime, so the installed commands need neither Python nor a Dart SDK. Build on
+the OS and architecture where you will run them. Repeat the build and install
+commands after updating the source; the installed copies are independent of
+the checkout.
+
+For a machine-wide installation for all users, build with `make` first, then
+install into the default prefix `/usr/local` (requires administrator access):
+
+```sh
+sudo make install
+```
+
+Ensure `/usr/local/bin` is on your `PATH`. You can override `PREFIX` or set
+`BINDIR` directly to choose another destination. `DESTDIR` prepends a staging
+directory for packaging, for example `make install DESTDIR=/tmp/table-package`.
+To use a specific Dart SDK, run `make DART=/path/to/dart`.
+
+If an older Python installation or Dart global activation is present, keep the
+native installation directory first on `PATH`. Remove any old shell aliases or
+functions with these names from your shell configuration, then open a new
+terminal. `type -a table-table slack-table md-table` shows conflicting commands.
 
 ## Usage
 
@@ -160,8 +198,7 @@ frontend can obtain a column count and retry. Output strings do not include a
 terminal newline; the CLI adds one when printing. The core performs no I/O and
 does not import the CLI or clipboard implementation.
 
-Parsing order, whitespace normalization, CSV quoting, and Markdown padding
-preserve the Python behavior. Markdown widths count Unicode code points, not
+Markdown widths count Unicode code points, not
 terminal display columns or grapheme clusters.
 
 ## Test
@@ -172,46 +209,35 @@ After `dart pub get`, run the core contracts directly in Dart:
 dart test
 ```
 
-The 28 tests in `test/core_test.dart` and `test/core_regressions_test.dart`
-preserve the Python tests' inputs, expected outputs, and error assertions. They
-call the Dart library directly, without Python or subprocesses. Both suites
-passed against Dart before the temporary Python-to-Dart bridge was removed.
+The tests in `test/` call the Dart library directly and cover parsing, formatting,
+format choices, and regressions.
 
-For the full check, including CLI subprocess contracts and the retained Python
-reference suite, use Python 3.9+ (no third-party Python packages are needed):
+For the full check, including CLI subprocess contracts, use Python 3.9+
+(no third-party Python packages are needed):
 
 ```sh
 python3 tool/check.py
 ```
 
-This checks formatting and static analysis, runs the Dart core tests, builds both
-legacy CLIs and `table-table`, then runs:
+This checks formatting and static analysis, runs the Dart core tests, builds all
+three native commands, then runs:
 
-1. The original Python suite plus additional migration regression cases against
-   the retained Python implementation.
-2. Python CLI subprocess contracts using temporary clipboard commands and POSIX
+1. Python CLI subprocess contracts using temporary clipboard commands and POSIX
    terminals, without reading or changing your actual clipboard. This harness
    runs on macOS/Linux; Windows clipboard integration has not been verified.
-3. Browser compilation of the public core API. If Node is installed, the
+2. Browser compilation of the public core API. If Node is installed, the
    resulting JavaScript also runs a smoke test.
 
-The original Python tests remain in `tests/` as reference coverage for the
-retained implementation. Dart CLI behavior is checked independently through
-`tests/cli_contract/`, which invokes the real compiled executables. The original
-CLI/clipboard/OCR mock-based tests only exercise the Python implementation.
+Python is used only for the check runner and the CLI test harness in
+`tests/cli_contract/`, which invokes the real compiled executables. The former
+Python implementation, packaging, and reference tests have been removed.
 
 For Jaspr's component tests, run `dart test` in `apps/table_web`. After installing
 Dart dependencies in both packages and running `npm ci` in `apps/table_web`,
 `python3 tool/check.py --web` runs the complete
 check, including Jaspr analysis, component tests, and a production web build.
 
-## Python reference and OCR
+## Input support
 
-The original implementation remains in `src/slack_table`, with its original
-tests and packaging, as the migration reference. Its image/OCR functionality is
-**not ported to Dart**. The Dart CLI currently accepts text input only and does
-not require Tesseract. See [the Python reference instructions](docs/python-reference.md)
-to use the previous implementation, including its optional runtime OCR paths.
-
-When OCR is added to Dart, it can supply a `Table` to the same formatters. Engine
-integration and image access can remain outside the portable text core.
+The CLI accepts text input only. The former Python image/OCR functionality has
+not been ported to Dart; Tesseract is not required.

@@ -1,4 +1,4 @@
-"""Build Dart and run the Python reference, Dart contracts, CLI, and web checks."""
+"""Build Dart and run the core contracts, CLI, and web checks."""
 
 import argparse
 import os
@@ -35,9 +35,6 @@ def main():
         run(dart, 'compile', 'exe', source, '-o', binaries[name])
 
     env = dict(os.environ, PYTHONDONTWRITEBYTECODE='1')
-    env['PYTHONPATH'] = str(ROOT / 'src')
-    run(sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-v', env=env)
-
     env['SLACK_TABLE_DART_CLI'] = binaries['slack-table']
     env['TABLE_TABLE_DART_CLI'] = binaries['table-table']
     env['MD_TABLE_DART_CLI'] = binaries['md-table']

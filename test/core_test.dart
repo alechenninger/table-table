@@ -1,7 +1,7 @@
 import 'package:slack_table/slack_table.dart';
 import 'package:test/test.dart';
 
-// Direct ports of tests/test_core.py; preserve its inputs and expectations.
+// Preserve the original implementation's inputs and expectations.
 void main() {
   test('renders padded markdown', () {
     expect(

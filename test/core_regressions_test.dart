@@ -1,7 +1,7 @@
 import 'package:slack_table/slack_table.dart';
 import 'package:test/test.dart';
 
-// Direct ports of tests/test_core_regressions.py, including all subtest cases.
+// Preserve regression coverage from the original implementation.
 void main() {
   test('quoted csv cells and newlines', () {
     expect(
