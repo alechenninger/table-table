@@ -217,6 +217,22 @@ python3 tool/check.py --web
 This adds web formatting and analysis, component tests, and a production build.
 For a faster web-only test run, use `dart test` inside `apps/table_web`.
 
+### Measure core performance
+
+The benchmark covers parsing, formatting, and complete conversions for ASCII
+and Unicode tables. It prints JSON lines with milliseconds per operation;
+input generation, worker messaging, and UI rendering are excluded. To measure
+optimized JavaScript in Node:
+
+```sh
+mkdir -p build
+dart compile js -O2 --no-source-maps tool/benchmark.dart -o build/benchmark.js
+node build/benchmark.js
+```
+
+Run `dart run tool/benchmark.dart` to measure the Dart VM instead. Compare results
+using the same compiler settings and runtime on an otherwise idle machine.
+
 ## Use the Dart library
 
 The public API is in [`lib/slack_table.dart`](lib/slack_table.dart). The package

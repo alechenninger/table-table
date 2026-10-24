@@ -25,10 +25,20 @@ class AmbiguousColumnsError extends ParseError {
 class Table {
   final List<List<String>> rows;
   final String sourceFormat;
+  final bool _isNormalized;
 
   Table(List<List<String>> rows, {this.sourceFormat = InputFormats.auto})
-      : rows = List.unmodifiable(
-            rows.map((row) => List<String>.unmodifiable(row)));
+      : rows = _freezeRows(rows),
+        _isNormalized = false;
+
+  // Parser cells are already clean; pad and freeze them once for both outputs.
+  Table._parsed(List<List<String>> rows,
+      {required this.sourceFormat, int minColumns = 0})
+      : rows = _freezeRows(_padded(rows, minColumns)),
+        _isNormalized = true;
+
+  List<List<String>> get _normalizedRows =>
+      _isNormalized ? rows : _normalized(rows);
 }
 
 /// Parse text and format it for Slack (default) or Markdown.
@@ -52,10 +62,25 @@ Table parseTable(String text,
 
   // Detection precedence: specialized tables before general delimiters,
   // and TSV before CSV when the input contains both tabs and commas.
+  final hasTabs = text.contains('\t');
+  List<List<String>>? tabRows;
+  List<List<String>> readTabs(String format) =>
+      tabRows ??= _readDelimitedRows(text, format, '\t');
+
   final parsers = <String, Table Function(String)>{
     InputFormats.markdown: _parseMarkdown,
-    InputFormats.cursor: _parseCursorCanvas,
-    InputFormats.tsv: _parseTsv,
+    InputFormats.cursor: (_) {
+      if (!hasTabs) {
+        throw const ParseError('no cursor canvas tab fragments found');
+      }
+      return _parseCursorCanvas(readTabs(InputFormats.cursor));
+    },
+    InputFormats.tsv: (_) {
+      if (!hasTabs) {
+        throw const ParseError('no tab-delimited rows found');
+      }
+      return _parseDelimitedRows(readTabs(InputFormats.tsv), InputFormats.tsv);
+    },
     InputFormats.csv: _parseCsv,
     InputFormats.pipe: _parsePipe,
     InputFormats.spaced: (value) => _parseSpacedCells(value, columns),
@@ -70,9 +95,10 @@ Table parseTable(String text,
     }
     return parser(text);
   }
-  for (final parser in parsers.values) {
+  for (final entry in parsers.entries) {
+    if (entry.key == InputFormats.markdown && !text.contains('|')) continue;
     try {
-      return parser(text);
+      return entry.value(text);
     } on AmbiguousColumnsError {
       rethrow;
     } on ParseError {
@@ -97,14 +123,14 @@ String formatTable(Table table, {String outputFormat = OutputFormats.slack}) {
 
 /// Render cells as tab-separated values suitable for pasting into Slack.
 String formatTsv(Table table) {
-  final rows = _normalized(table.rows);
+  final rows = table._normalizedRows;
   if (rows.isEmpty) throw const ParseError('no table rows found');
   return rows.map((row) => row.join('\t')).join('\n');
 }
 
 /// Render Markdown padded to display columns, using the first row as the header.
 String formatMarkdown(Table table) {
-  final rows = _normalized(table.rows);
+  final rows = table._normalizedRows;
   if (rows.isEmpty || rows.first.isEmpty) {
     throw const ParseError('no table rows found');
   }
@@ -112,20 +138,22 @@ String formatMarkdown(Table table) {
     for (final row in rows) [for (final cell in row) _escapeMarkdownCell(cell)],
   ];
   final columnWidths = List.filled(escapedRows.first.length, 3);
+  final measuredWidths = <List<int>>[];
   // Measure escaped source: wide glyphs occupy two columns, while combining
   // marks share a column with their base character.
   for (final row in escapedRows) {
+    final widths = [for (final cell in row) _displayWidth(cell)];
+    measuredWidths.add(widths);
     for (var column = 0; column < row.length; column++) {
-      columnWidths[column] =
-          math.max(columnWidths[column], stringWidth(row[column]));
+      columnWidths[column] = math.max(columnWidths[column], widths[column]);
     }
   }
   final separator = [for (final width in columnWidths) '-' * width];
   return [
-    _formatMarkdownRow(escapedRows.first, columnWidths),
-    _formatMarkdownRow(separator, columnWidths),
-    for (final row in escapedRows.skip(1))
-      _formatMarkdownRow(row, columnWidths),
+    _formatMarkdownRow(escapedRows.first, columnWidths, measuredWidths.first),
+    _formatMarkdownRow(separator, columnWidths, columnWidths),
+    for (var i = 1; i < escapedRows.length; i++)
+      _formatMarkdownRow(escapedRows[i], columnWidths, measuredWidths[i]),
   ].join('\n');
 }
 
@@ -143,11 +171,22 @@ final _edgeWhitespace =
 String _escapeMarkdownCell(String cell) =>
     cell.replaceAll('\\', '\\\\').replaceAll('|', r'\|');
 
-String _formatMarkdownRow(List<String> row, List<int> columnWidths) {
+int _displayWidth(String value) {
+  // Printable ASCII occupies one display column per code unit. Keep controls,
+  // ANSI escapes, and all Unicode on the existing display-width path.
+  for (var i = 0; i < value.length; i++) {
+    final code = value.codeUnitAt(i);
+    if (code < 32 || code > 126) return stringWidth(value);
+  }
+  return value.length;
+}
+
+String _formatMarkdownRow(
+    List<String> row, List<int> columnWidths, List<int> measuredWidths) {
   final paddedCells = <String>[];
   for (var column = 0; column < row.length; column++) {
     final cell = row[column];
-    final padding = columnWidths[column] - stringWidth(cell);
+    final padding = columnWidths[column] - measuredWidths[column];
     paddedCells.add(cell + ' ' * padding);
   }
   return '| ${paddedCells.join(' | ')} |';
@@ -159,6 +198,7 @@ Table _parseMarkdown(String text) {
     throw const ParseError('markdown tables need a header and separator');
   }
   for (var i = 1; i < lines.length; i++) {
+    if (!lines[i].contains('---')) continue;
     final separator = _splitMarkdownRow(lines[i]);
     if (!_isSeparatorRow(separator)) continue;
     final header = _splitMarkdownRow(lines[i - 1]);
@@ -171,9 +211,10 @@ Table _parseMarkdown(String text) {
       if (row.length < 2) break;
       body.add(row);
     }
-    return Table(
-      _normalized([header, ...body], math.max(header.length, separator.length)),
+    return Table._parsed(
+      [header, ...body],
       sourceFormat: InputFormats.markdown,
+      minColumns: math.max(header.length, separator.length),
     );
   }
   throw const ParseError('no markdown table separator found');
@@ -190,28 +231,18 @@ Table _parsePipe(String text) {
         'pipe-delimited input must have at least two columns');
   }
   if (rows.length > 1 && _isSeparatorRow(rows[1])) rows.removeAt(1);
-  return Table(_normalized(rows), sourceFormat: InputFormats.pipe);
+  return Table._parsed(rows, sourceFormat: InputFormats.pipe);
 }
 
 Table _parseCsv(String text) {
   if (!text.contains(',')) {
     throw const ParseError('no comma-delimited rows found');
   }
-  return _parseDelimited(text, InputFormats.csv, ',');
+  return _parseDelimitedRows(
+      _readDelimitedRows(text, InputFormats.csv, ','), InputFormats.csv);
 }
 
-Table _parseTsv(String text) {
-  if (!text.contains('\t')) {
-    throw const ParseError('no tab-delimited rows found');
-  }
-  return _parseDelimited(text, InputFormats.tsv, '\t');
-}
-
-Table _parseCursorCanvas(String text) {
-  if (!text.contains('\t')) {
-    throw const ParseError('no cursor canvas tab fragments found');
-  }
-  final rows = _readDelimitedRows(text, InputFormats.cursor, '\t');
+Table _parseCursorCanvas(List<List<String>> rows) {
   if (rows.length < 3) {
     throw const ParseError(
         'cursor canvas input needs a header and fragmented rows');
@@ -249,8 +280,7 @@ Table _parseCursorCanvas(String text) {
     throw const ParseError(
         'cursor canvas fragments ended before a row was complete');
   }
-  return Table(_normalized(logicalRows, columnCount),
-      sourceFormat: InputFormats.cursor);
+  return Table._parsed(logicalRows, sourceFormat: InputFormats.cursor);
 }
 
 Table _parseSpacedCells(String text, int? columns) {
@@ -275,18 +305,17 @@ Table _parseSpacedCells(String text, int? columns) {
     throw ParseError('${cells.length} blank-line-separated cells cannot form '
         'multiple complete rows of $columns columns');
   }
-  return Table([
+  return Table._parsed([
     for (var i = 0; i < cells.length; i += columns)
       cells.sublist(i, i + columns),
   ], sourceFormat: InputFormats.spaced);
 }
 
-Table _parseDelimited(String text, String format, String delimiter) {
-  final rows = _readDelimitedRows(text, format, delimiter);
+Table _parseDelimitedRows(List<List<String>> rows, String format) {
   if (rows.first.length < 2) {
     throw ParseError('$format input must have at least two columns');
   }
-  return Table(_normalized(rows), sourceFormat: format);
+  return Table._parsed(rows, sourceFormat: format);
 }
 
 // Python csv.reader's default dialect: quotes only open at field start,
@@ -296,58 +325,72 @@ List<List<String>> _readDelimitedRows(
     String text, String format, String delimiter) {
   final rows = <List<String>>[];
   var row = <String>[];
-  var cell = StringBuffer();
+  StringBuffer? fragments;
+  var start = 0;
   var atStart = true;
   var quoted = false;
   var fieldLength = 0;
+  final delimiterCode = delimiter.codeUnitAt(0);
 
-  void append(String char) {
-    if (++fieldLength > _csvFieldLimit) {
-      throw const ParseError('field larger than field limit ($_csvFieldLimit)');
-    }
-    cell.write(char);
-  }
-
-  void finishCell() {
-    row.add(_cleanCell(cell.toString()));
-    cell = StringBuffer();
+  void finishCell(int end) {
+    final tail = text.substring(start, end);
+    final cell =
+        fragments == null ? tail : (fragments!..write(tail)).toString();
+    row.add(_cleanCell(cell));
+    fragments = null;
+    start = end + 1;
     atStart = true;
     fieldLength = 0;
   }
 
-  void finishRow() {
-    finishCell();
+  void finishRow(int end) {
+    finishCell(end);
     if (row.any((value) => value.isNotEmpty)) rows.add(row);
     row = [];
   }
 
-  final chars = text.runes.toList();
-  for (var i = 0; i < chars.length; i++) {
-    final char = String.fromCharCode(chars[i]);
+  // Scan UTF-16 indices and copy whole spans. Only quote removal needs a
+  // buffer; ordinary fields need no code-point list or per-character writes.
+  for (var i = 0; i < text.length; i++) {
+    final code = text.codeUnitAt(i);
     if (quoted) {
-      if (char == '"') {
-        if (i + 1 < chars.length && chars[i + 1] == 34) {
-          append('"');
+      if (code == 34) {
+        fragments ??= StringBuffer();
+        fragments!.write(text.substring(start, i));
+        if (i + 1 < text.length && text.codeUnitAt(i + 1) == 34) {
+          fragments!.write('"');
           i++;
+          start = i + 1;
         } else {
           quoted = false;
+          start = i + 1;
+          continue;
         }
-      } else {
-        append(char);
       }
-    } else if (atStart && char == '"') {
+    } else if (atStart && code == 34) {
       quoted = true;
       atStart = false;
-    } else if (char == delimiter) {
-      finishCell();
-    } else if (char == '\n') {
-      finishRow();
+      start = i + 1;
+      continue;
+    } else if (code == delimiterCode) {
+      finishCell(i);
+      continue;
+    } else if (code == 10) {
+      finishRow(i);
+      continue;
     } else {
-      append(char);
       atStart = false;
     }
+    if (++fieldLength > _csvFieldLimit) {
+      throw const ParseError('field larger than field limit ($_csvFieldLimit)');
+    }
+    // The field limit counts code points, including one per surrogate pair.
+    if (code >= 0xd800 && code <= 0xdbff && i + 1 < text.length) {
+      final next = text.codeUnitAt(i + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) i++;
+    }
   }
-  finishRow();
+  finishRow(text.length);
   if (rows.isEmpty) throw ParseError('no $format rows found');
   return rows;
 }
@@ -362,42 +405,56 @@ List<String> _splitMarkdownRow(String line) {
     line = line.substring(0, line.length - 1);
   }
   final cells = <String>[];
-  var current = StringBuffer();
-  var escaped = false;
-  for (final rune in line.runes) {
-    final char = String.fromCharCode(rune);
-    if (escaped) {
-      current.write(char == '|' ? char : '\\$char');
-      escaped = false;
-    } else if (char == '\\') {
-      escaped = true;
-    } else if (char == '|') {
-      cells.add(_cleanCell(current.toString()));
-      current = StringBuffer();
-    } else {
-      current.write(char);
+  StringBuffer? fragments;
+  var start = 0;
+
+  void finishCell(int end) {
+    final tail = line.substring(start, end);
+    final cell =
+        fragments == null ? tail : (fragments!..write(tail)).toString();
+    cells.add(_cleanCell(cell));
+    fragments = null;
+    start = end + 1;
+  }
+
+  for (var i = 0; i < line.length; i++) {
+    final code = line.codeUnitAt(i);
+    if (code == 92 && i + 1 < line.length) {
+      if (line.codeUnitAt(i + 1) == 124) {
+        fragments ??= StringBuffer();
+        fragments!.write(line.substring(start, i));
+        start = i + 1;
+      }
+      i++;
+    } else if (code == 124) {
+      finishCell(i);
     }
   }
-  if (escaped) current.write('\\');
-  cells.add(_cleanCell(current.toString()));
+  finishCell(line.length);
   return cells;
 }
 
 String _strip(String value) => value.replaceAll(_edgeWhitespace, '');
 
-String _cleanCell(String cell) => _strip(cell).split(_whitespace).join(' ');
+String _cleanCell(String cell) => _strip(cell).replaceAll(_whitespace, ' ');
 
 bool _isSeparatorRow(List<String> cells) =>
     cells.isNotEmpty &&
     cells.every((cell) => _separator.hasMatch(_strip(cell)));
 
-List<List<String>> _normalized(List<List<String>> rows, [int minColumns = 0]) {
+List<List<String>> _freezeRows(List<List<String>> rows) =>
+    List.unmodifiable(rows.map((row) => List<String>.unmodifiable(row)));
+
+List<List<String>> _normalized(List<List<String>> rows) => _padded([
+      for (final row in rows) [for (final cell in row) _cleanCell(cell)]
+    ]);
+
+List<List<String>> _padded(List<List<String>> rows, [int minColumns = 0]) {
   final columns = rows.map((row) => row.length).fold(minColumns, math.max);
   return rows
-      .map((row) => [
-            ...row.map(_cleanCell),
-            ...List.filled(columns - row.length, ''),
-          ])
+      .map((row) => row.length == columns
+          ? row
+          : [...row, ...List.filled(columns - row.length, '')])
       .toList();
 }
 

@@ -35,6 +35,61 @@ void main() {
     );
   });
 
+  test('delimited spans preserve Unicode, escaped quotes, and suffixes', () {
+    expect(
+      parseTable(
+        'A,B,C\n"😀""x","one,\ntwo",tail\n'
+        'prefix"quote,"closed"suffix,𠮷\n,,\nlast,,',
+        inputFormat: 'csv',
+      ).rows,
+      [
+        ['A', 'B', 'C'],
+        ['😀"x', 'one, two', 'tail'],
+        ['prefix"quote', 'closedsuffix', '𠮷'],
+        ['last', '', ''],
+      ],
+    );
+  });
+
+  test('formatting preserves caller-created table cells and snapshots', () {
+    final rows = [
+      [' A ', 'B'],
+      [' x\ty ', 'z'],
+      [' tail '],
+    ];
+    final table = Table(rows);
+    rows.first[0] = 'changed';
+    rows.add(['added']);
+
+    expect(formatTsv(table), 'A\tB\nx y\tz\ntail\t');
+    expect(
+      formatMarkdown(table),
+      '| A    | B   |\n| ---- | --- |\n| x y  | z   |\n| tail |     |',
+    );
+    expect(formatTsv(table), 'A\tB\nx y\tz\ntail\t');
+    expect(table.rows, [
+      [' A ', 'B'],
+      [' x\ty ', 'z'],
+      [' tail '],
+    ]);
+    for (final immutable in [table, parseTable('A,B\nx,y')]) {
+      expect(() => immutable.rows.add(['new']), throwsUnsupportedError);
+      expect(() => immutable.rows.first[0] = 'new', throwsUnsupportedError);
+    }
+  });
+
+  test('markdown width still ignores ANSI escapes and control characters', () {
+    expect(
+      formatMarkdown(Table([
+        ['\x1b[31mred\x1b[0m', 'a\x00b'],
+        ['blue', 'abc'],
+      ])),
+      '| \x1b[31mred\x1b[0m  | a\x00b  |\n'
+      '| ---- | --- |\n'
+      '| blue | abc |',
+    );
+  });
+
   test('unicode markdown width counts display columns', () {
     expect(
       formatMarkdown(Table([
@@ -121,6 +176,9 @@ void main() {
       ('| A | B |\n| --- | --- |\n| x | y |', 'markdown'),
       ('A\tB\nx\ty', 'tsv'),
       ('A\tB,C\nx\ty,z', 'tsv'),
+      ('A\tB\tC\n1\t2\t3', 'tsv'),
+      ('A\tB\tC\n1\t2\t3\t4\n5\t6\t7', 'tsv'),
+      ('A\tB\tC\n1\n2', 'tsv'),
       ('A,B\nx,y', 'csv'),
       ('A,B|C\nx,y|z', 'csv'),
       ('A | B\nx | y', 'pipe'),
@@ -144,6 +202,28 @@ void main() {
       [
         ['A', 'B'],
         ['x', 'y\\']
+      ],
+    );
+  });
+
+  test('pipe spans preserve backslashes around escaped pipes and Unicode', () {
+    for (final (line, expected) in [
+      (r'x\|😀|y', ['x|😀', 'y']),
+      (r'x\\|😀', [r'x\\', '😀']),
+      (r'x\\\|😀|y', [r'x\\' '|😀', 'y']),
+      (r'x\😀|y', [r'x\😀', 'y']),
+    ]) {
+      expect(parseTable('A|B\n$line', inputFormat: 'pipe').rows[1], expected,
+          reason: line);
+    }
+  });
+
+  test('markdown pads to the separator and widest body row', () {
+    expect(
+      parseTable('| A | B |\n| --- | --- | --- |\n| x | y |').rows,
+      [
+        ['A', 'B', ''],
+        ['x', 'y', ''],
       ],
     );
   });
@@ -219,5 +299,21 @@ void main() {
         contains('field larger than field limit'),
       )),
     );
+  });
+
+  test('csv field limit counts surrogate pairs and decoded quotes once', () {
+    for (final character in ['😀', '"']) {
+      final field = character * 131072;
+      final encoded = field.replaceAll('"', '""');
+      expect(
+        parseTable('A,B\n"$encoded",x', inputFormat: 'csv').rows[1],
+        [field, 'x'],
+      );
+      expect(
+        () => parseTable('A,B\n"$encoded$encoded",x', inputFormat: 'csv'),
+        throwsA(isA<ParseError>().having((error) => error.message, 'message',
+            contains('field larger than field limit'))),
+      );
+    }
   });
 }
