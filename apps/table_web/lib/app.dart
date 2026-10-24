@@ -28,6 +28,8 @@ enum _CopyStatus {
 }
 
 class _TableAppState extends State<TableApp> {
+  static const _repositoryUrl = 'https://github.com/alechenninger/table-table';
+
   // Reuse complete utility names so Tailwind can discover every class.
   static const _tableInputClasses =
       'textarea table-input w-full min-h-36 max-h-80 resize-y field-sizing-content overflow-auto p-3 '
@@ -104,14 +106,17 @@ class _TableAppState extends State<TableApp> {
 
   Component _buildHeader() {
     return header([
-      p(
-        classes:
-            'wordmark flex items-center gap-2 text-base font-semibold tracking-tight text-base-content/70',
-        [
-          img(src: 'favicon.svg', alt: '', width: 20, height: 20),
-          .text('table-table'),
-        ],
-      ),
+      div(classes: 'flex flex-wrap items-center justify-between gap-x-6 gap-y-3', [
+        p(
+          classes:
+              'wordmark flex items-center gap-2 text-base font-semibold tracking-tight text-base-content/70',
+          [
+            img(src: 'favicon.svg', alt: '', width: 20, height: 20),
+            .text('table-table'),
+          ],
+        ),
+        _buildProjectLinks(),
+      ]),
       h1(
         classes:
             'mt-6 text-[clamp(2rem,1.25rem+3vw,3.25rem)] leading-tight font-semibold tracking-tight text-balance sm:mt-8',
@@ -121,6 +126,71 @@ class _TableAppState extends State<TableApp> {
         .text('Tables are everywhere. Keep them tables, wherever you paste.'),
       ]),
     ]);
+  }
+
+  Component _buildProjectLinks() {
+    return nav(
+      classes: 'flex flex-wrap items-center gap-2',
+      attributes: {'aria-label': 'Project links'},
+      [
+        a(
+          href: _repositoryUrl,
+          classes:
+              'btn btn-ghost min-h-11 h-auto gap-2 rounded-full px-3 py-2 text-sm font-medium '
+              'text-base-content/70 hover:bg-base-content/5 hover:text-base-content',
+          [
+            svg(
+              classes: 'size-4 shrink-0',
+              viewBox: '0 0 24 24',
+              attributes: {'fill': 'currentColor', 'aria-hidden': 'true'},
+              [
+                path(
+                  d:
+                      'M12 .75a11.25 11.25 0 0 0-3.56 21.92c.56.1.77-.24.77-.54v-2.1 '
+                      'c-3.13.68-3.79-1.33-3.79-1.33-.51-1.3-1.25-1.65-1.25-1.65 '
+                      '-1.02-.7.08-.69.08-.69 1.13.08 1.73 1.16 1.73 1.16 '
+                      '1 1.72 2.63 1.22 3.27.93.1-.73.39-1.22.71-1.5 '
+                      '-2.5-.28-5.13-1.25-5.13-5.56 0-1.23.44-2.23 1.16-3.01 '
+                      '-.12-.28-.5-1.43.11-2.98 0 0 .95-.3 3.1 1.15 '
+                      'a10.8 10.8 0 0 1 5.64 0c2.15-1.45 3.1-1.15 3.1-1.15 '
+                      '.61 1.55.23 2.7.11 2.98.72.78 1.16 1.78 1.16 3.01 '
+                      '0 4.32-2.63 5.28-5.14 5.56.4.35.76 1.03.76 2.08v3.1 '
+                      'c0 .3.2.65.77.54A11.25 11.25 0 0 0 12 .75Z',
+                  [],
+                ),
+              ],
+            ),
+            .text('GitHub'),
+          ],
+        ),
+        a(
+          href: _repositoryUrl,
+          classes:
+              'btn btn-outline min-h-11 h-auto gap-2 rounded-full border-base-content/20 '
+              'bg-base-100 px-4 py-2 text-sm font-medium text-base-content/80 '
+              'hover:border-base-content/40 hover:bg-base-content/5 hover:text-base-content',
+          [
+            svg(
+              classes: 'size-4 shrink-0',
+              viewBox: '0 0 24 24',
+              attributes: {
+                'fill': 'none',
+                'stroke': 'currentColor',
+                'stroke-width': '1.75',
+                'stroke-linecap': 'round',
+                'stroke-linejoin': 'round',
+                'aria-hidden': 'true',
+              },
+              [
+                rect(x: '2', y: '4', width: '20', height: '16', rx: '3', []),
+                path(d: 'm6 9 3 3-3 3m7 0h4', []),
+              ],
+            ),
+            .text('Get the CLI'),
+          ],
+        ),
+      ],
+    );
   }
 
   Component _buildInputPane() {
