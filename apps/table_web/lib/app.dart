@@ -8,8 +8,9 @@ import 'conversion.dart';
 
 class TableApp extends StatefulComponent {
   final Future<void> Function(String) copyText;
+  final EventCallback? onLoveMouseMove;
 
-  const TableApp({required this.copyText, super.key});
+  const TableApp({required this.copyText, this.onLoveMouseMove, super.key});
 
   @override
   State<TableApp> createState() => _TableAppState();
@@ -120,7 +121,15 @@ class _TableAppState extends State<TableApp> {
       h1(
         classes:
             'mt-6 text-[clamp(2rem,1.25rem+3vw,3.25rem)] leading-tight font-semibold tracking-tight text-balance sm:mt-8',
-        [.text('For the love of tables.')],
+        [
+          .text('For the '),
+          span(
+            classes: 'tagline-love',
+            events: {'mousemove': ?component.onLoveMouseMove},
+            [.text('love')],
+          ),
+          .text(' of tables.'),
+        ],
       ),
       p(classes: 'intro mt-3 max-w-xl text-lg leading-normal sm:text-xl', [
         .text('Tables are everywhere. Keep them tables, wherever you paste.'),

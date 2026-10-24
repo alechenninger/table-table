@@ -8,9 +8,26 @@ import 'app.dart';
 void main() {
   web.document.addEventListener('keydown', _handleInputKeyDown.toJS);
   runApp(
-    TableApp(copyText: (text) => web.window.navigator.clipboard.writeText(text).toDart),
+    TableApp(
+      copyText: (text) => web.window.navigator.clipboard.writeText(text).toDart,
+      onLoveMouseMove: _handleLoveMouseMove,
+    ),
     attachTo: '#app',
   );
+}
+
+void _handleLoveMouseMove(web.Event event) {
+  if (!web.window
+      .matchMedia('(hover: hover) and (prefers-reduced-motion: no-preference)')
+      .matches) {
+    return;
+  }
+
+  final love = event.currentTarget as web.HTMLElement;
+  final pointer = event as web.MouseEvent;
+  final bounds = love.getBoundingClientRect();
+  love.style.setProperty('--love-light-x', '${pointer.clientX - bounds.left}px');
+  love.style.setProperty('--love-light-y', '${pointer.clientY - bounds.top}px');
 }
 
 void _handleInputKeyDown(web.Event event) {
