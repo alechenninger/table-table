@@ -1,4 +1,4 @@
-import 'package:slack_table/slack_table.dart';
+import 'package:table_table/slack_table.dart';
 import 'package:test/test.dart';
 
 void main() {

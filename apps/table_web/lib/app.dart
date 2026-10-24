@@ -1,7 +1,7 @@
 import 'package:characters/characters.dart';
 import 'package:jaspr/dom.dart';
 import 'package:jaspr/jaspr.dart';
-import 'package:slack_table/slack_table.dart' as tables;
+import 'package:table_table/slack_table.dart' as tables;
 import 'package:string_width/string_width.dart';
 
 import 'conversion.dart';

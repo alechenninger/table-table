@@ -225,12 +225,12 @@ on this checkout:
 
 ```yaml
 dependencies:
-  slack_table:
+  table_table:
     path: /path/to/this/checkout
 ```
 
 ```dart
-import 'package:slack_table/slack_table.dart';
+import 'package:table_table/slack_table.dart';
 
 final slackText = render('Name,Role\nAda,Engineering');
 final markdown = render(

@@ -1,4 +1,4 @@
-import 'package:slack_table/slack_table.dart' as tables;
+import 'package:table_table/slack_table.dart' as tables;
 
 /// The result of interpreting the current input, including any column choices.
 sealed class Conversion {

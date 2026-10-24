@@ -1,4 +1,4 @@
-import 'package:slack_table/slack_table.dart';
+import 'package:table_table/slack_table.dart';
 
 // Compile this entry point with dart compile js to check that the public API
 // has no native-only dependencies. It also runs under Node for a JS smoke test.

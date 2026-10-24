@@ -1,5 +1,5 @@
 name: table_table_web
-description: A small browser frontend for slack_table.
+description: A small browser frontend for table_table.
 publish_to: none
 version: 0.1.0
 
@@ -9,7 +9,7 @@ environment:
 dependencies:
   characters: ^1.4.1
   jaspr: ^0.23.5
-  slack_table:
+  table_table:
     path: ../..
   string_width: ^0.1.5
   web: ^1.1.1

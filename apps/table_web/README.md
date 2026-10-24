@@ -1,7 +1,7 @@
 # table-table web
 
 A client-only Jaspr app. `lib/app.dart` owns the small amount of UI state and calls
-the shared `slack_table` package via a path dependency. The browser entry point
+the shared `table_table` package via a path dependency. The browser entry point
 supplies clipboard access; the component tests supply an in-memory replacement.
 
 Requires Dart 3.10+ and Node.js 20+. Install both sets of dependencies, then start
