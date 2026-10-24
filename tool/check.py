@@ -25,7 +25,9 @@ def main():
     BUILD.mkdir(exist_ok=True)
     dart = os.environ.get('DART', 'dart')
     run(dart, 'format', '--output=none', '--set-exit-if-changed', 'lib', 'bin', 'test', 'tool')
-    run(dart, 'analyze')
+    # Scope core checks here so editors can still discover the web package.
+    for directory in ['lib', 'bin', 'test', 'tool']:
+        run(dart, 'analyze', directory)
     run(dart, 'test', '--reporter', 'expanded')
     binaries = {}
     for name, source in [('table-table', 'bin/table_table.dart'),
