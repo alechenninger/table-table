@@ -358,10 +358,10 @@ class _TableAppState extends State<TableApp> {
 
   Component _buildOutputFormats() {
     return div(classes: 'copy-destination flex flex-wrap items-center gap-2 text-sm', [
-      span(id: 'copy-as-label', classes: 'text-base-content/70', [.text('Copy as')]),
+      span(id: 'copy-for-label', classes: 'text-base-content/70', [.text('Copy for')]),
       div(
         classes: 'output-format flex max-w-full flex-wrap rounded-field bg-base-200 p-1',
-        attributes: {'role': 'group', 'aria-labelledby': 'copy-as-label'},
+        attributes: {'role': 'group', 'aria-labelledby': 'copy-for-label'},
         [
           for (final value in tables.OutputFormats.values)
             button(
