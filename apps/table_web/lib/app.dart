@@ -85,6 +85,15 @@ class _TableAppState extends State<TableApp> {
           _buildOutputPane(),
         ],
       ),
+      p(classes: 'mt-4 text-sm leading-6 text-base-content/70', [
+        .text('Something not working? '),
+        a(
+          href: '$_repositoryUrl/issues/new',
+          classes: 'underline underline-offset-2 hover:text-base-content',
+          [.text('Open an issue')],
+        ),
+        .text('.'),
+      ]),
     ]);
   }
 
@@ -134,6 +143,15 @@ class _TableAppState extends State<TableApp> {
       p(classes: 'intro mt-3 max-w-xl text-lg leading-normal sm:text-xl', [
         .text('Tables are everywhere. Keep them tables, wherever you paste.'),
       ]),
+      p(
+        id: 'input-instructions',
+        classes: 'mt-3 max-w-[50ch] text-base leading-6 text-base-content/80',
+        [
+          .text('If it looks like a table, copy it as-is and paste it here.'),
+          br(),
+          .text("We'll format it for Slack or Markdown."),
+        ],
+      ),
     ]);
   }
 
@@ -251,7 +269,7 @@ class _TableAppState extends State<TableApp> {
       attributes: {
         'wrap': 'off',
         'aria-label': 'Table to convert',
-        'aria-describedby': 'input-feedback',
+        'aria-describedby': 'input-instructions input-feedback',
         if (_hasError) 'aria-invalid': 'true',
         'autocapitalize': 'off',
         'autocorrect': 'off',
