@@ -5,6 +5,8 @@ void main() {
   test('every advertised input format has a working parser', () {
     const examples = {
       InputFormats.auto: 'A,B\n1,2',
+      InputFormats.html:
+          '<table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>',
       InputFormats.markdown: '| A | B |\n| --- | --- |\n| 1 | 2 |',
       InputFormats.cursor: 'A\tB\tC\n1\n2\n3',
       InputFormats.csv: 'A,B\n1,2',

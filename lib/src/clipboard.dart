@@ -1,5 +1,45 @@
-import 'dart:convert';
-import 'dart:io';
+/// Text representations understood by the table converters.
+enum ClipboardFormat {
+  plainText('text/plain'),
+  html('text/html');
+
+  final String mediaType;
+
+  const ClipboardFormat(this.mediaType);
+}
+
+/// An immutable observation of the clipboard, with absent formats omitted.
+/// Equality includes every representation, so HTML-only changes are observable.
+final class ClipboardSnapshot {
+  final Map<ClipboardFormat, String> representations;
+
+  ClipboardSnapshot(Map<ClipboardFormat, String> representations)
+      : representations = Map.unmodifiable(representations);
+
+  ClipboardSnapshot.text(String text) : this({ClipboardFormat.plainText: text});
+
+  String? operator [](ClipboardFormat format) => representations[format];
+
+  @override
+  bool operator ==(Object other) =>
+      other is ClipboardSnapshot &&
+      representations.length == other.representations.length &&
+      representations.entries.every((entry) => other[entry.key] == entry.value);
+
+  @override
+  int get hashCode => Object.hashAll([
+        for (final format in ClipboardFormat.values)
+          Object.hash(format, representations[format]),
+      ]);
+}
+
+/// Native clipboard I/O, independent of table parsing and format preference.
+abstract interface class Clipboard {
+  Future<ClipboardSnapshot> read();
+
+  /// Replace the clipboard with the supplied representations of one item.
+  Future<void> write(ClipboardSnapshot contents);
+}
 
 class ClipboardError implements Exception {
   final String message;
@@ -9,120 +49,3 @@ class ClipboardError implements Exception {
   @override
   String toString() => message;
 }
-
-/// Native text clipboard access. Kept out of the portable library's exports.
-class Clipboard {
-  // Resolve lazily so commands that only print output need no clipboard tools.
-  late final _ClipboardCommands _commands = _detectCommands();
-
-  Future<String> read() async => _run(_commands.read);
-
-  Future<void> write(String text) async {
-    await _run(_commands.write, input: text);
-  }
-
-  _ClipboardCommands _detectCommands() {
-    if (Platform.isMacOS && _hasCommand('pbpaste') && _hasCommand('pbcopy')) {
-      return (read: ['pbpaste'], write: ['pbcopy']);
-    }
-    if (Platform.isWindows) {
-      final powershell = _hasCommand('powershell')
-          ? 'powershell'
-          : _hasCommand('pwsh')
-              ? 'pwsh'
-              : null;
-      if (powershell != null) {
-        return (
-          read: [powershell, '-NoProfile', '-Command', 'Get-Clipboard -Raw'],
-          write: [
-            powershell,
-            '-NoProfile',
-            '-Command',
-            'Set-Clipboard -Value ([Console]::In.ReadToEnd())'
-          ],
-        );
-      }
-    }
-    if (_hasCommand('wl-paste') && _hasCommand('wl-copy')) {
-      return (read: ['wl-paste', '--no-newline'], write: ['wl-copy']);
-    }
-    if (_hasCommand('xclip')) {
-      return (
-        read: ['xclip', '-selection', 'clipboard', '-out'],
-        write: ['xclip', '-selection', 'clipboard', '-in'],
-      );
-    }
-    if (_hasCommand('xsel')) {
-      return (
-        read: ['xsel', '--clipboard', '--output'],
-        write: ['xsel', '--clipboard', '--input']
-      );
-    }
-    throw const ClipboardError('no supported clipboard command found');
-  }
-
-  bool _hasCommand(String command) {
-    final separator = Platform.isWindows ? ';' : ':';
-    final extensions = Platform.isWindows
-        ? [
-            '',
-            ...(Platform.environment['PATHEXT'] ?? '.COM;.EXE;.BAT;.CMD')
-                .split(';')
-          ]
-        : [''];
-    for (final directory
-        in (Platform.environment['PATH'] ?? '').split(separator)) {
-      for (final extension in extensions) {
-        final file = File('${directory.isEmpty ? '.' : directory}'
-            '${Platform.pathSeparator}$command$extension');
-        final stat = file.statSync();
-        if (stat.type == FileSystemEntityType.file &&
-            (Platform.isWindows || stat.mode & 0x49 != 0)) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  Future<String> _run(List<String> command, {String? input}) async {
-    try {
-      final process = await Process.start(command.first, command.sublist(1));
-      final exitCode = process.exitCode;
-      final outputText = process.stdout.transform(utf8.decoder).join();
-      final errorText = process.stderr.transform(utf8.decoder).join();
-      // Listen to every I/O future immediately so decoder or broken-pipe
-      // errors cannot escape while another stream is still completing.
-      await Future.wait([
-        exitCode,
-        outputText,
-        errorText,
-        _writeInput(process.stdin, input),
-      ]);
-      // All futures are complete; read each result with its original type.
-      final status = await exitCode;
-      final text = await outputText;
-      final error = await errorText;
-      if (status != 0) {
-        final detail = error.trim().isNotEmpty ? error.trim() : text.trim();
-        throw ClipboardError(detail.isEmpty
-            ? '${command.first} exited with status $status'
-            : detail);
-      }
-      return text;
-    } on ProcessException catch (error) {
-      throw ClipboardError(error.message);
-    } on IOException catch (error) {
-      throw ClipboardError(error.toString());
-    } on FormatException catch (error) {
-      throw ClipboardError(error.message);
-    }
-  }
-
-  Future<void> _writeInput(IOSink sink, String? text) async {
-    if (text != null) sink.write(text);
-    await sink.close();
-  }
-}
-
-typedef _ClipboardCommands = ({List<String> read, List<String> write});

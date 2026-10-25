@@ -1,0 +1,125 @@
+import 'dart:convert';
+import 'dart:io';
+
+import '../clipboard.dart';
+
+/// Plain-text adapter for systems with clipboard command-line utilities.
+class CommandClipboard implements Clipboard {
+  final List<String> _read;
+  final List<String> _write;
+
+  CommandClipboard({required List<String> read, required List<String> write})
+      : _read = List.unmodifiable(read),
+        _write = List.unmodifiable(write);
+
+  factory CommandClipboard.detect() {
+    if (Platform.isMacOS && _hasCommand('pbpaste') && _hasCommand('pbcopy')) {
+      return CommandClipboard(read: ['pbpaste'], write: ['pbcopy']);
+    }
+    if (Platform.isWindows) {
+      final powershell = _hasCommand('powershell')
+          ? 'powershell'
+          : _hasCommand('pwsh')
+              ? 'pwsh'
+              : null;
+      if (powershell != null) {
+        return CommandClipboard(
+          read: [powershell, '-NoProfile', '-Command', 'Get-Clipboard -Raw'],
+          write: [
+            powershell,
+            '-NoProfile',
+            '-Command',
+            'Set-Clipboard -Value ([Console]::In.ReadToEnd())'
+          ],
+        );
+      }
+    }
+    if (_hasCommand('wl-paste') && _hasCommand('wl-copy')) {
+      return CommandClipboard(
+          read: ['wl-paste', '--no-newline'], write: ['wl-copy']);
+    }
+    if (_hasCommand('xclip')) {
+      return CommandClipboard(
+        read: ['xclip', '-selection', 'clipboard', '-out'],
+        write: ['xclip', '-selection', 'clipboard', '-in'],
+      );
+    }
+    if (_hasCommand('xsel')) {
+      return CommandClipboard(
+        read: ['xsel', '--clipboard', '--output'],
+        write: ['xsel', '--clipboard', '--input'],
+      );
+    }
+    throw const ClipboardError('no supported clipboard command found');
+  }
+
+  @override
+  Future<ClipboardSnapshot> read() async =>
+      ClipboardSnapshot.text(await _run(_read));
+
+  @override
+  Future<void> write(ClipboardSnapshot contents) async {
+    final text = contents[ClipboardFormat.plainText];
+    if (contents.representations.length != 1 || text == null) {
+      throw const ClipboardError('clipboard commands support only plain text');
+    }
+    await _run(_write, input: text);
+  }
+
+  static bool _hasCommand(String command) {
+    final separator = Platform.isWindows ? ';' : ':';
+    final extensions = Platform.isWindows
+        ? [
+            '',
+            ...(Platform.environment['PATHEXT'] ?? '.COM;.EXE;.BAT;.CMD')
+                .split(';')
+          ]
+        : [''];
+    for (final directory
+        in (Platform.environment['PATH'] ?? '').split(separator)) {
+      for (final extension in extensions) {
+        final file = File('${directory.isEmpty ? '.' : directory}'
+            '${Platform.pathSeparator}$command$extension');
+        final stat = file.statSync();
+        if (stat.type == FileSystemEntityType.file &&
+            (Platform.isWindows || stat.mode & 0x49 != 0)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  Future<String> _run(List<String> command, {String? input}) async {
+    try {
+      final process = await Process.start(command.first, command.sublist(1));
+      final exitCode = process.exitCode;
+      final outputText = process.stdout.transform(utf8.decoder).join();
+      final errorText = process.stderr.transform(utf8.decoder).join();
+      // Observe decoding and broken-pipe failures while all streams complete.
+      await Future.wait(
+          [exitCode, outputText, errorText, _writeInput(process.stdin, input)]);
+      final status = await exitCode;
+      final text = await outputText;
+      final error = await errorText;
+      if (status != 0) {
+        final detail = error.trim().isNotEmpty ? error.trim() : text.trim();
+        throw ClipboardError(detail.isEmpty
+            ? '${command.first} exited with status $status'
+            : detail);
+      }
+      return text;
+    } on ProcessException catch (error) {
+      throw ClipboardError(error.message);
+    } on IOException catch (error) {
+      throw ClipboardError(error.toString());
+    } on FormatException catch (error) {
+      throw ClipboardError(error.message);
+    }
+  }
+
+  Future<void> _writeInput(IOSink sink, String? text) async {
+    if (text != null) sink.write(text);
+    await sink.close();
+  }
+}

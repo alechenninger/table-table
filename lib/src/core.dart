@@ -1,7 +1,12 @@
 import 'dart:math' as math;
 
+import 'package:html/dom.dart' as html;
+import 'package:html/parser.dart' as html_parser;
+
 import 'display_width.dart';
 import 'formats.dart';
+
+part 'html.dart';
 
 class ParseError implements Exception {
   final String message;
@@ -67,6 +72,7 @@ Table parseTable(String text,
       tabRows ??= _readDelimitedRows(text, format, '\t');
 
   final parsers = <String, Table Function(String)>{
+    InputFormats.html: _parseHtml,
     InputFormats.markdown: _parseMarkdown,
     InputFormats.cursor: (_) {
       if (!hasTabs) {
@@ -95,6 +101,9 @@ Table parseTable(String text,
     return parser(text);
   }
   for (final entry in parsers.entries) {
+    if (entry.key == InputFormats.html && !_htmlTableTag.hasMatch(text)) {
+      continue;
+    }
     if (entry.key == InputFormats.markdown &&
         (!text.contains('|') || !text.contains('---'))) {
       continue;

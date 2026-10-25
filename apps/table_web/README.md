@@ -3,6 +3,21 @@
 A client-only Jaspr app. `lib/app.dart` owns the small amount of UI state and calls
 the shared `table_table` package via a path dependency. The browser entry point
 supplies clipboard access; the component tests supply an in-memory replacement.
+The component binds the paste and Tab-key handlers directly to the input textarea;
+Jaspr manages their lifetime as the input is rebuilt. Browser handlers use the
+element's `currentTarget` rather than document-wide listeners or ID lookups.
+
+The browser paste handler reads `text/html` from the paste event when Auto-detect
+or HTML is selected. It first constructs the resulting editor contents using the
+current selection, then parses that source once. A successful `ParsedInput`
+retains both the HTML source and its immutable table. The component applies it
+through the callback supplied to `bindInputPaste` and `Conversion.fromTable`,
+without dispatching another input event. Auto-detect reports HTML; copied markup
+stays inert text in the editor. Conversion to TSV or Markdown happens only for
+the output. Explicit text formats and unsuccessful HTML candidates keep the
+browser's normal plain-text paste and input-event behavior. Ordinary edits and
+input-format changes parse the current source; output changes reuse the table.
+This uses the user's paste event and does not request clipboard-read permission.
 
 Requires Dart 3.10+ and Node.js 20+. Install both sets of dependencies, then start
 Jaspr and the CSS watcher together:

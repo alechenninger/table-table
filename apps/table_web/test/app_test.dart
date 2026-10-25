@@ -5,6 +5,7 @@ import 'package:jaspr/jaspr.dart' show Text;
 import 'package:jaspr_test/jaspr_test.dart';
 import 'package:table_table/slack_table.dart' as tables;
 import 'package:table_table_web/app.dart';
+import 'package:table_table_web/clipboard_paste.dart';
 import 'package:table_table_web/table_preview.dart';
 
 void main() {
@@ -104,6 +105,83 @@ void main() {
     await tester.click(_button('copy-output'));
     expect(copied, 'Name\tCount\nAda\t12');
     expect(find.text('Table preserved.'), findsOneComponent);
+  });
+
+  testComponents('rich paste keeps HTML source while converting the output', (tester) async {
+    String? copied;
+    late void Function(ParsedInput) applyPaste;
+    tester.pumpComponent(
+      TableApp(
+        copyText: (text) async => copied = text,
+        bindInputPaste: (onPaste) {
+          applyPaste = onPaste;
+          return (_) {};
+        },
+      ),
+    );
+    const html =
+        '<table><tr><th>Pattern</th><th>Cell</th></tr>'
+        '<tr><td>Paragraph</td><td><p>Policy engine URI</p></td></tr></table>';
+    applyPaste(htmlTablePaste(html)!);
+    await tester.pump();
+    expect(find.text(html), findsOneComponent);
+    expect(find.text('Auto: HTML'), findsOneComponent);
+    expect(find.text('Policy engine URI'), findsOneComponent);
+    expect(find.text('1 data row · 2 columns'), findsOneComponent);
+    await tester.click(_button('copy-output'));
+    expect(copied, 'Pattern\tCell\nParagraph\tPolicy engine URI');
+
+    await tester.click(_button('output-markdown'));
+    expect(find.text(html), findsOneComponent);
+    expect(find.text('Auto: HTML'), findsOneComponent);
+    await tester.click(_button('copy-output'));
+    expect(copied, tables.render(html, outputFormat: tables.OutputFormats.markdown));
+
+    (find.byType(select).evaluate().single.component as select).onChange!(['tsv']);
+    await tester.pump();
+    expect(_copyButton().disabled, isTrue);
+    (find.byType(select).evaluate().single.component as select).onChange!(['auto']);
+    await tester.pump();
+    expect(find.text('Auto: HTML'), findsOneComponent);
+
+    await _enter(tester, 'A,B\nx,y');
+    expect(find.text('Auto: CSV'), findsOneComponent);
+    await tester.click(_button('copy-output'));
+    expect(copied, tables.render('A,B\nx,y', outputFormat: tables.OutputFormats.markdown));
+  });
+
+  testComponents('structured paste invalidates a pending copy of the old input', (tester) async {
+    final oldCopy = Completer<void>();
+    final copies = <String>[];
+    late void Function(ParsedInput) applyPaste;
+    tester.pumpComponent(
+      TableApp(
+        copyText: (text) {
+          copies.add(text);
+          return copies.length == 1 ? oldCopy.future : Future.value();
+        },
+        bindInputPaste: (onPaste) {
+          applyPaste = onPaste;
+          return (_) {};
+        },
+      ),
+    );
+    await _enter(tester, 'A,B\nold,value');
+    await tester.click(_button('copy-output'));
+    expect(_copyButton().disabled, isTrue);
+    applyPaste(
+      htmlTablePaste(
+        '<table><tr><th>A</th><th>B</th></tr>'
+        '<tr><td>new</td><td>value</td></tr></table>',
+      )!,
+    );
+    await tester.pump();
+    expect(_copyButton().disabled, isFalse);
+    oldCopy.complete();
+    await tester.pump();
+    expect(find.text('Table preserved.'), findsNothing);
+    await tester.click(_button('copy-output'));
+    expect(copies, ['A\tB\nold\tvalue', 'A\tB\nnew\tvalue']);
   });
 
   testComponents('switching output updates the preview and copied text', (tester) async {

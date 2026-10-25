@@ -1,6 +1,7 @@
 """Exercise the compiled Dart CLIs through their actual process boundary."""
 
 import contextlib
+import json
 import os
 from pathlib import Path
 import select
@@ -19,6 +20,11 @@ if os.name == 'posix':
 SLACK = os.environ['SLACK_TABLE_DART_CLI']
 TABLE = os.environ['TABLE_TABLE_DART_CLI']
 MARKDOWN = os.environ['MD_TABLE_DART_CLI']
+DRIVER = os.environ.get('TABLE_TABLE_CLIPBOARD_DRIVER')
+
+if sys.platform == 'darwin' and not DRIVER:
+    raise RuntimeError('Set TABLE_TABLE_CLIPBOARD_DRIVER to the compiled test/fixtures/cli_driver.dart; '
+                       'clipboard tests must not access the real general pasteboard.')
 
 
 @unittest.skipUnless(os.name == 'posix', 'clipboard command harness requires POSIX')
@@ -40,6 +46,9 @@ class CliTests(unittest.TestCase):
         self.env.pop('TEST_CLIPBOARD_ERROR', None)
         self.env.pop('TEST_COPY_ERROR', None)
         self.env.pop('TEST_INVALID_UTF8', None)
+        self.env.pop('TEST_CLIPBOARD_SNAPSHOTS', None)
+        self.env.pop('TEST_NATIVE_PASTEBOARD', None)
+        self.env.pop('TEST_NATIVE_READS', None)
         # Fake only the external clipboard commands, never Dart internals.
         read = '''import os, pathlib, sys
 p = pathlib.Path(os.environ['TEST_READS'])
@@ -73,9 +82,14 @@ pathlib.Path(os.environ['TEST_CLIPBOARD']).write_bytes(sys.stdin.buffer.read())
 
     def run_cli(self, flags=(), text='', executable=SLACK):
         return subprocess.run(
-            [executable, *flags], input=text, capture_output=True,
+            [*self.command(executable), *flags], input=text, capture_output=True,
             text=True, encoding='utf-8', env=self.env, timeout=10,
         )
+
+    def command(self, executable):
+        if DRIVER:
+            return [DRIVER, Path(executable).name.removesuffix('.exe')]
+        return [executable]
 
     def assert_success(self, result, output):
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -161,6 +175,44 @@ pathlib.Path(os.environ['TEST_CLIPBOARD']).write_bytes(sys.stdin.buffer.read())
         self.assertEqual(self.clipboard.read_text(), 'C\tD\n3\t4')
         self.assertEqual(self.count.read_text(), '2')
 
+    @unittest.skipUnless(DRIVER, 'requires the injected clipboard test driver')
+    def test_wait_detects_html_only_change_and_converts_the_observed_snapshot(self):
+        def html(value):
+            return '<table><tr><th>A</th><th>B</th></tr>' + \
+                   f'<tr><td>{value}</td><td>value</td></tr></table>'
+        snapshots = self.root / 'snapshots.json'
+        snapshots.write_text(json.dumps([
+            {'text/plain': 'unchanged', 'text/html': html(value)}
+            for value in ['before', 'observed', 'too late']
+        ]))
+        result_file = self.root / 'result.json'
+        self.env['TEST_CLIPBOARD_SNAPSHOTS'] = str(snapshots)
+        self.env['TEST_CLIPBOARD_RESULT'] = str(result_file)
+        self.assert_success(self.run_cli(['--wait']), 'A\tB\nobserved\tvalue\n')
+        self.assertEqual(json.loads(result_file.read_text()), {'text/plain': 'A\tB\nobserved\tvalue'})
+        self.assertEqual(self.count.read_text(), '2')
+
+    @unittest.skipUnless(DRIVER, 'requires the injected clipboard test driver')
+    def test_cli_html_preference_and_explicit_plain_format(self):
+        snapshots = self.root / 'snapshots.json'
+        snapshots.write_text(json.dumps([{
+            'text/plain': 'A,B\nplain,value',
+            'text/html': '<table><tr><th>A</th><th>B</th></tr>'
+                         '<tr><td>rich</td><td>value</td></tr></table>',
+        }]))
+        self.env['TEST_CLIPBOARD_SNAPSHOTS'] = str(snapshots)
+        self.env['TEST_CLIPBOARD_RESULT'] = str(self.root / 'result.json')
+        self.assert_success(self.run_cli(['--clipboard']), 'A\tB\nrich\tvalue\n')
+        self.assert_success(self.run_cli(['--clipboard', '--input', 'csv']), 'A\tB\nplain\tvalue\n')
+
+    def test_production_entry_points_read_pipes_without_a_clipboard(self):
+        for executable, expected in [(SLACK, 'A\tB\nx\ty\n'), (TABLE, 'A\tB\nx\ty\n'),
+                                     (MARKDOWN, '| A   | B   |\n| --- | --- |\n| x   | y   |\n')]:
+            with self.subTest(executable=executable):
+                result = subprocess.run([executable], input='A,B\nx,y', capture_output=True,
+                                        text=True, env=dict(self.env, PATH=''), timeout=10)
+                self.assert_success(result, expected)
+
     def test_wait_reports_an_empty_changed_clipboard(self):
         self.env['TEST_CHANGE_AFTER_READ'] = ''
         result = self.run_cli(['--wait'])
@@ -200,7 +252,7 @@ pathlib.Path(os.environ['TEST_CLIPBOARD']).write_bytes(sys.stdin.buffer.read())
         result = self.run_cli(['--clipboard'])
         self.assertEqual(result.returncode, 2)
         self.assertEqual(result.stdout, '')
-        self.assertTrue(result.stderr.startswith('slack-table: could not read clipboard text:'))
+        self.assertTrue(result.stderr.startswith('slack-table: could not read clipboard:'))
         self.assertNotIn('Unhandled exception', result.stderr)
 
     def test_ambiguous_columns_in_pipeline(self):
@@ -276,7 +328,7 @@ pathlib.Path(os.environ['TEST_CLIPBOARD']).write_bytes(sys.stdin.buffer.read())
 
     @unittest.skipUnless(os.name == 'posix', 'requires POSIX signals')
     def test_interrupt_while_waiting(self):
-        process = subprocess.Popen([SLACK, '--wait'], stdin=subprocess.DEVNULL,
+        process = subprocess.Popen([*self.command(SLACK), '--wait'], stdin=subprocess.DEVNULL,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=self.env)
         try:
             deadline = time.monotonic() + 5
@@ -299,7 +351,7 @@ pathlib.Path(os.environ['TEST_CLIPBOARD']).write_bytes(sys.stdin.buffer.read())
         attributes = termios.tcgetattr(slave)
         attributes[3] &= ~termios.ECHO
         termios.tcsetattr(slave, termios.TCSANOW, attributes)
-        process = subprocess.Popen([SLACK, *flags], stdin=slave,
+        process = subprocess.Popen([*self.command(SLACK), *flags], stdin=slave,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=self.env)
         os.close(slave)
         try:

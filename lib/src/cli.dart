@@ -6,12 +6,15 @@ import 'package:args/args.dart';
 
 import '../slack_table.dart';
 import 'clipboard.dart';
+import 'clipboard/system_clipboard.dart';
+import 'clipboard_table.dart';
 
-/// Run the native text CLI. The portable core never imports this library.
+/// Run the native CLI. The portable core never imports this library.
 Future<int> runCli(
   List<String> arguments, {
   String prog = 'slack-table',
   String defaultOutput = OutputFormats.slack,
+  Clipboard? clipboard,
 }) async {
   final parser = _buildParser(defaultOutput);
   final ArgResults args;
@@ -34,7 +37,7 @@ Future<int> runCli(
     return 0;
   }
 
-  final cli = _Cli(args);
+  final cli = _Cli(args, clipboard);
   final interrupt = ProcessSignal.sigint.watch().listen((_) {
     stderr.writeln('$prog: interrupted');
     exit(130);
@@ -71,13 +74,16 @@ class _CliError implements Exception {
 
 class _Cli {
   final ArgResults args;
-  final Clipboard _clipboard = Clipboard();
+  final Clipboard? _providedClipboard;
+  // Files and pipes never initialize a platform clipboard unless --copy is used.
+  late final Clipboard _clipboard =
+      _providedClipboard ?? createSystemClipboard();
   final StreamIterator<String> _input = StreamIterator(
     stdin.transform(utf8.decoder).transform(const LineSplitter()),
   );
   late final int? _columns;
 
-  _Cli(this.args);
+  _Cli(this.args, this._providedClipboard);
 
   Future<void> run() async {
     _columns = _columnCount(args.option('columns'));
@@ -85,7 +91,7 @@ class _Cli {
     final outputFormat = args.option('output')!;
     final output = formatTable(table, outputFormat: outputFormat);
     if (args.flag('copy') || copyByDefault) {
-      await _clipboard.write(output);
+      await _clipboard.write(ClipboardSnapshot.text(output));
       if (!args.flag('quiet') && stderr.hasTerminal) {
         final label = outputFormat == OutputFormats.markdown
             ? 'Markdown table'
@@ -134,24 +140,31 @@ class _Cli {
   }
 
   Future<Table> _readClipboardTable() async {
-    final String text;
+    final ClipboardSnapshot contents;
     try {
-      text = await _clipboard.read();
+      contents = await _clipboard.read();
     } on ClipboardError catch (error) {
-      throw _CliError('could not read clipboard text: $error');
+      throw _CliError('could not read clipboard: $error');
     }
-    return _parseClipboardText(text);
+    return _parseClipboard(contents);
   }
 
-  Future<Table> _parseClipboardText(String text) {
-    if (text.trim().isEmpty) {
+  Future<Table> _parseClipboard(ClipboardSnapshot contents) {
+    final format = args.option('input')!;
+    final text = contents[ClipboardFormat.plainText];
+    final html = format == InputFormats.auto || format == InputFormats.html
+        ? contents[ClipboardFormat.html]
+        : null;
+    if ((text == null || text.trim().isEmpty) &&
+        (html == null || html.trim().isEmpty)) {
       throw const _CliError('no table text found on the clipboard');
     }
-    return _parseText(text);
+    return _parseWithColumns((columns) =>
+        parseClipboardTable(contents, inputFormat: format, columns: columns));
   }
 
   Future<Table> _waitForClipboardTable() async {
-    final String original;
+    final ClipboardSnapshot original;
     try {
       original = await _clipboard.read();
     } on ClipboardError catch (error) {
@@ -163,28 +176,33 @@ class _Cli {
     }
     while (true) {
       await Future<void>.delayed(const Duration(milliseconds: 200));
-      final String current;
+      final ClipboardSnapshot current;
       try {
         current = await _clipboard.read();
       } on ClipboardError catch (error) {
         throw _CliError('could not read clipboard: $error');
       }
-      // Compare text itself, including same-length changes, and parse the
-      // observed value without reading a potentially newer clipboard value.
-      if (current != original) return _parseClipboardText(current);
+      // Compare every flavor, including HTML-only and same-length changes.
+      // Parse the observed snapshot without reading a potentially newer value.
+      if (current != original) return _parseClipboard(current);
     }
   }
 
-  Future<Table> _parseText(String text) async {
+  Future<Table> _parseText(String text) {
     final format = args.option('input')!;
+    return _parseWithColumns(
+        (columns) => parseTable(text, inputFormat: format, columns: columns));
+  }
+
+  Future<Table> _parseWithColumns(Table Function(int? columns) parse) async {
     try {
-      return parseTable(text, inputFormat: format, columns: _columns);
+      return parse(_columns);
     } on AmbiguousColumnsError catch (error) {
       if (!stdin.hasTerminal) {
         throw _CliError('$error; specify one with --columns N');
       }
       final columns = await _promptForColumnCount(error.candidates);
-      return parseTable(text, inputFormat: format, columns: columns);
+      return parse(columns);
     }
   }
 
@@ -234,7 +252,7 @@ ArgParser _buildParser(String defaultOutput) => ArgParser()
       help: 'Read from the clipboard and copy the result back.')
   ..addFlag('wait',
       negatable: false,
-      help: 'Wait for clipboard text to change, convert it, copy it, and exit.')
+      help: 'Wait for clipboard contents to change, convert, copy, and exit.')
   ..addFlag('quiet',
       abbr: 'q',
       negatable: false,

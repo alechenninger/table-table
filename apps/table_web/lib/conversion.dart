@@ -24,6 +24,23 @@ sealed class Conversion {
         }
         table = tables.parseTable(input, inputFormat: inputFormat, columns: columns);
       }
+      return Conversion.fromTable(
+        table,
+        outputFormat: outputFormat,
+        candidates: candidates,
+      );
+    } on tables.ParseError {
+      return const InvalidConversion();
+    }
+  }
+
+  /// Format an already-parsed input without interpreting its source again.
+  factory Conversion.fromTable(
+    tables.Table table, {
+    required String outputFormat,
+    List<int> candidates = const [],
+  }) {
+    try {
       return ReadyConversion(
         table: table,
         output: tables.formatTable(table, outputFormat: outputFormat),

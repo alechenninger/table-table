@@ -1,6 +1,7 @@
 /// Input identifiers shared by the parsers and their frontends.
 abstract final class InputFormats {
   static const auto = 'auto';
+  static const html = 'html';
   static const markdown = 'markdown';
   static const cursor = 'cursor';
   static const csv = 'csv';
@@ -9,7 +10,7 @@ abstract final class InputFormats {
   static const spaced = 'spaced';
 
   /// Supported choices, independent of parser detection precedence.
-  static const values = [auto, markdown, cursor, csv, tsv, pipe, spaced];
+  static const values = [auto, html, markdown, cursor, csv, tsv, pipe, spaced];
 }
 
 /// Output identifiers shared by the formatters and their frontends.

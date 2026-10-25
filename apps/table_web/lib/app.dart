@@ -2,15 +2,25 @@ import 'package:jaspr/dom.dart';
 import 'package:jaspr/jaspr.dart';
 import 'package:table_table/slack_table.dart' as tables;
 
+import 'clipboard_paste.dart';
 import 'conversion.dart';
 import 'preview_data.dart';
 import 'table_preview.dart';
 
 class TableApp extends StatefulComponent {
   final Future<void> Function(String) copyText;
+  // Bind the element event to a callback that keeps source and parsed data together.
+  final EventCallback Function(void Function(ParsedInput) onPaste)? bindInputPaste;
+  final EventCallback? onInputKeyDown;
   final EventCallback? onLoveMouseMove;
 
-  const TableApp({required this.copyText, this.onLoveMouseMove, super.key});
+  const TableApp({
+    required this.copyText,
+    this.bindInputPaste,
+    this.onInputKeyDown,
+    this.onLoveMouseMove,
+    super.key,
+  });
 
   @override
   State<TableApp> createState() => _TableAppState();
@@ -48,11 +58,12 @@ class _TableAppState extends State<TableApp> {
   };
   static const _inputFormatLabels = {
     tables.InputFormats.auto: 'Auto-detect',
+    tables.InputFormats.html: 'HTML',
     tables.InputFormats.markdown: 'Markdown',
     tables.InputFormats.csv: 'CSV',
     tables.InputFormats.tsv: 'TSV',
     tables.InputFormats.pipe: 'Pipe-separated',
-    tables.InputFormats.cursor: 'Cursor',
+    tables.InputFormats.cursor: 'Wrapped table text',
     tables.InputFormats.spaced: 'Spaced cells',
   };
 
@@ -274,6 +285,11 @@ class _TableAppState extends State<TableApp> {
         'autocapitalize': 'off',
         'autocorrect': 'off',
       },
+      events: {
+        if (_inputFormat == tables.InputFormats.auto || _inputFormat == tables.InputFormats.html)
+          'paste': ?component.bindInputPaste?.call(_pasteInput),
+        'keydown': ?component.onInputKeyDown,
+      },
       onInput: _changeInput,
       [.text(_input)],
     );
@@ -477,14 +493,16 @@ class _TableAppState extends State<TableApp> {
     );
   }
 
-  void _changeInput(String value) {
+  void _changeInput(String value, {tables.Table? parsedTable}) {
     setState(() {
       _clearedInput = null;
       _input = value;
       _columns = null;
-      _convert();
+      _convert(parsedTable: parsedTable);
     });
   }
+
+  void _pasteInput(ParsedInput input) => _changeInput(input.source, parsedTable: input.table);
 
   void _changeInputFormat(String value) {
     setState(() {
@@ -547,13 +565,15 @@ class _TableAppState extends State<TableApp> {
     });
   }
 
-  void _convert() {
-    _conversion = Conversion.fromInput(
-      _input,
-      inputFormat: _inputFormat,
-      outputFormat: _outputFormat,
-      columns: _columns,
-    );
+  void _convert({tables.Table? parsedTable}) {
+    _conversion = parsedTable == null
+        ? Conversion.fromInput(
+            _input,
+            inputFormat: _inputFormat,
+            outputFormat: _outputFormat,
+            columns: _columns,
+          )
+        : Conversion.fromTable(parsedTable, outputFormat: _outputFormat);
     _preview = null;
     _copyFallback = null;
     _resetCopy();

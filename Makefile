@@ -9,7 +9,7 @@ DESTDIR ?=
 INSTALL ?= install
 
 BINARIES := build/table-table build/slack-table build/md-table
-SOURCES := $(wildcard lib/*.dart lib/src/*.dart)
+SOURCES := $(wildcard lib/*.dart lib/src/*.dart lib/src/clipboard/*.dart)
 
 .PHONY: all install
 

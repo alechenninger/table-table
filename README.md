@@ -4,8 +4,8 @@ For the love of tables. Copying a table between apps should leave you with a tab
 
 **table-table converts table text into tab-separated rows for pasting into Slack,
 or neatly aligned Markdown for a document or README.** Give it Markdown, CSV,
-spreadsheet cells, or a messy table copied from Cursor or Jira Rovo. It detects
-the format and puts the rows and columns back together.
+spreadsheet cells, HTML tables, or a messy table copied from a browser or Jira
+Rovo. It detects the format and puts the rows and columns back together.
 
 Use the web app for a quick paste-and-copy workflow, or the command-line tools
 for files, pipes, and your clipboard. Both use the same Dart conversion library.
@@ -31,6 +31,14 @@ Open the local URL printed in the terminal, then:
 If the input could have more than one column count, the app lets you choose.
 If the browser cannot copy to your clipboard, it provides text you can select
 and copy yourself.
+
+With Auto-detect selected, pasting a copied HTML table uses the clipboard's
+HTML version when available. Rows and cells stay intact even when they contain
+paragraphs, lists, buttons, or flex layouts. The editor retains the HTML source,
+and the detected format is HTML. Conversion to TSV or Markdown happens only for
+the output; line breaks within a cell become spaces. If the source provides only
+plain text, the app uses its text parsers. Missing text and ambiguous cell
+boundaries cannot always be recovered from that version.
 
 To host it yourself, run `npm run build` from `apps/table_web` and serve the
 contents of `build/jaspr/` on a static host. Use HTTPS for clipboard access
@@ -141,10 +149,20 @@ All three commands accept the same options. Use `--output slack` or
 `--output markdown` to override the default, `--quiet` (`-q`) to suppress printed
 output, and `--help` for the full option list.
 
-Clipboard support uses macOS's `pbpaste`/`pbcopy`, PowerShell on Windows, or
-`wl-paste`/`wl-copy`, `xclip`, or `xsel` on Linux. Linux users need one of those
-clipboard tool pairs installed. Windows clipboard support is implemented but
-has not been verified by the CLI test suite.
+On macOS, clipboard access calls AppKit directly through Dart FFI. Auto-detection
+prefers the clipboard's HTML table and falls back to plain text when HTML cannot
+be read as a supported table. Explicit text formats such as `--input tsv` use
+the plain-text representation. `--input html` also accepts literal HTML copied
+as plain text. `--wait` observes changes to both representations, including HTML
+changes that leave the plain text identical. Converted output replaces the
+clipboard with plain text for Slack or Markdown.
+
+Windows uses PowerShell; Linux uses `wl-paste`/`wl-copy`, `xclip`, or `xsel`.
+These command adapters currently expose plain text. Linux users need one of
+those clipboard tool pairs installed. Windows clipboard support is implemented
+but has not been verified by the CLI test suite. The FFI implementation is
+tested on macOS arm64; its pointer-sized signatures also target macOS x86_64,
+which has not been tested here.
 
 ## What can it read?
 
@@ -153,11 +171,12 @@ web app or pass `--input FORMAT` to the CLI.
 
 | Input                                                    | CLI format |
 | -------------------------------------------------------- | ---------- |
+| HTML tables, including nested content within cells       | `html`     |
 | Markdown tables, including the header separator          | `markdown` |
 | Comma-separated values, including quoted cells           | `csv`      |
 | Tab-separated values, such as copied spreadsheet cells   | `tsv`      |
 | Rows separated by pipes (`Name \| Role`)                 | `pipe`     |
-| Cursor canvas copies with fragmented rows                | `cursor`   |
+| Wrapped table text, including Cursor canvas copies       | `cursor`   |
 | Cells separated by blank lines, such as Jira Rovo copies | `spaced`   |
 
 Blank-line-separated cells may need a column count. The web app and interactive
@@ -185,14 +204,15 @@ used the web app or CLI. Replace any private data before sharing it.
 
 The project has three main parts:
 
-| Where                                                                                 | What lives there                                        |
-| ------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| [`lib/src/core.dart`](lib/src/core.dart)                                              | Table parsing and formatting, with no I/O               |
-| [`lib/src/formats.dart`](lib/src/formats.dart)                                        | Format names shared by the library, CLI, and web app    |
-| [`lib/src/cli.dart`](lib/src/cli.dart) and [`clipboard.dart`](lib/src/clipboard.dart) | Command-line behavior and system clipboard access       |
-| [`apps/table_web/`](apps/table_web/)                                                  | The Jaspr web app, styled with Tailwind CSS and daisyUI |
-| [`test/`](test/)                                                                      | Dart tests for parsing and formatting                   |
-| [`tests/cli_contract/`](tests/cli_contract/)                                          | Python tests that exercise the compiled commands        |
+| Where                                                                                     | What lives there                                        |
+| ----------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| [`lib/src/core.dart`](lib/src/core.dart)                                                  | Table parsing and formatting, with no I/O               |
+| [`lib/src/formats.dart`](lib/src/formats.dart)                                            | Format names shared by the library, CLI, and web app    |
+| [`lib/src/cli.dart`](lib/src/cli.dart)                                                    | Command-line behavior and clipboard format preference   |
+| [`lib/src/clipboard.dart`](lib/src/clipboard.dart) and [`clipboard/`](lib/src/clipboard/) | Clipboard snapshots, interface, and platform adapters   |
+| [`apps/table_web/`](apps/table_web/)                                                      | The Jaspr web app, styled with Tailwind CSS and daisyUI |
+| [`test/`](test/)                                                                          | Dart tests for parsing and formatting                   |
+| [`tests/cli_contract/`](tests/cli_contract/)                                              | Python tests that exercise the compiled commands        |
 
 Keep conversion behavior in the shared core so improvements reach both the CLI
 and web app. For parser fixes, include a small regression example in the core
@@ -218,8 +238,12 @@ python3 tool/check.py
 It checks Dart formatting and static analysis, runs the core tests, builds all
 three commands, tests their behavior, and compiles the public library to
 JavaScript. If Node is available, it also runs the JavaScript smoke test. The
-CLI tests use temporary clipboard commands and leave your actual clipboard
-alone.
+CLI contract tests inject an adapter backed by temporary clipboard commands or
+scripted snapshots. Production entry points are also checked with piped input.
+On macOS, native FFI tests use private named pasteboards, including round trips
+across CLI processes and HTML-only changes under `--wait`. The full check also
+compiles and runs an AOT native clipboard smoke test. These tests leave the
+general clipboard untouched and need access to the macOS pasteboard service.
 
 For web changes, install the dependencies from the web quick start above, then
 run this from the repository root:
@@ -255,6 +279,30 @@ The fixtures include wide and Unicode-heavy tables of roughly 2 MB, and report
 UTF-8 input sizes. `dart run tool/benchmark.dart` measures the Dart VM's JIT
 runtime. Compare results using the same compiler settings and runtime on an
 otherwise idle machine.
+
+The HTML benchmark also exercises the browser's clipboard validation, conversion,
+and bounded preview preparation. Its fixtures include tall and wide tables, heavy
+inline styling, entities, omitted closing tags, nested tables, 10,000-deep trees,
+a 1 MiB cell, large surrounding documents, and ragged rows that expand to a million
+cells. Run it from the web package:
+
+```sh
+cd apps/table_web
+mkdir -p ../../build
+dart compile js -O4 --no-source-maps tool/benchmark_html.dart -o ../../build/benchmark_html.js
+node tool/run_dart_js.cjs ../../build/benchmark_html.js
+dart compile exe tool/benchmark_html.dart -o ../../build/benchmark_html
+../../build/benchmark_html
+```
+
+Append fixture-name filters such as `deep-cell` or `rich` to either runner. Results
+are JSON lines with a separate first-call time and the median of three warmed
+batches, each lasting at least 50 ms. A first call over one second is reported
+once and the remaining operations for that fixture are skipped; this is not a
+timeout. Fixture generation, clipboard I/O, browser DOM rendering, and console
+output are excluded. `convert-preview-*` parses source directly, while
+`paste-preview-*` uses the clipboard's structured source-and-table result. Both
+paths parse once before formatting the output and preparing its preview.
 
 ## Use the Dart library
 

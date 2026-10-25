@@ -40,7 +40,15 @@ def main():
     env['SLACK_TABLE_DART_CLI'] = binaries['slack-table']
     env['TABLE_TABLE_DART_CLI'] = binaries['table-table']
     env['MD_TABLE_DART_CLI'] = binaries['md-table']
+    driver = BUILD / ('clipboard-cli-driver' + SUFFIX)
+    run(dart, 'compile', 'exe', 'test/fixtures/cli_driver.dart', '-o', str(driver))
+    env['TABLE_TABLE_CLIPBOARD_DRIVER'] = str(driver)
     run(sys.executable, '-m', 'unittest', 'discover', '-s', 'tests/cli_contract', '-v', env=env)
+
+    if sys.platform == 'darwin':
+        native_smoke = BUILD / 'clipboard-smoke'
+        run(dart, 'compile', 'exe', 'tool/clipboard_smoke.dart', '-o', str(native_smoke))
+        run(str(native_smoke), str(driver))
 
     run(dart, 'compile', 'js', 'tool/web_smoke.dart', '-o', str(BUILD / 'web_smoke.js'))
     if shutil.which('node'):
