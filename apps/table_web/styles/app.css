@@ -8,6 +8,13 @@
   logs: false;
 }
 
+@plugin "daisyui/theme" {
+  name: "nord";
+  default: true;
+  --color-primary: #46658a;
+  --color-primary-content: #ffffff;
+}
+
 @layer base {
   body {
     @apply min-h-screen bg-base-200 font-sans text-base leading-normal text-base-content;
