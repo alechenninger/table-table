@@ -186,6 +186,14 @@ CLI ask when necessary; in a script, supply it explicitly:
 slack-table --input spaced --columns 3 copied-table.txt
 ```
 
+HTML conversion uses the first table outside templates and hidden subtrees.
+Elements marked `hidden` or with inline `display:none` are omitted, including
+rows and cells. Inline display keywords respect declaration order and
+`!important`; stylesheets, inherited styles, CSS variables, and the original
+page's layout are not reconstructed. Merged cells (`rowspan` or `colspan`)
+remain unsupported. Span attributes follow HTML's integer parsing and defaults:
+`colspan="0"` defaults to one, and `rowspan="0"` is rejected.
+
 A few things to know about the output:
 
 - Markdown uses the first row as the header. Padding accounts for wide CJK
@@ -282,9 +290,9 @@ otherwise idle machine.
 
 The HTML benchmark also exercises the browser's clipboard validation, conversion,
 and bounded preview preparation. Its fixtures include tall and wide tables, heavy
-inline styling, entities, omitted closing tags, nested tables, 10,000-deep trees,
-a 1 MiB cell, large surrounding documents, and ragged rows that expand to a million
-cells. Run it from the web package:
+repeated and distinct inline styling, entities, omitted closing tags, nested
+tables, 10,000-deep trees, a 1 MiB cell, large surrounding documents, and ragged
+rows that expand to a million cells. Run it from the web package:
 
 ```sh
 cd apps/table_web

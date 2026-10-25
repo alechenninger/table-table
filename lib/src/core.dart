@@ -1,7 +1,9 @@
 import 'dart:math' as math;
 
+import 'package:csslib/parser.dart' as css_parser;
 import 'package:html/dom.dart' as html;
 import 'package:html/parser.dart' as html_parser;
+import 'package:source_span/source_span.dart';
 
 import 'display_width.dart';
 import 'formats.dart';

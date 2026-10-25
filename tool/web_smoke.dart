@@ -20,6 +20,23 @@ void main() {
       '<td><span style="display:flex"><code>x</code><span>y</span></span>'
       '</td></tr></table>');
   if (html != 'A\tB\none two\tx y') throw StateError(html);
+  final filtered = render('<template><table><tr><td>ignored</td><td>table</td>'
+      '</tr></table></template><table><tr hidden><td>hidden</td><td>row</td></tr>'
+      '<tr><td colspan="0">A</td><td>'
+      '<span style="display:none;display:inline !IMPORTANT">visible</span>'
+      '</td></tr></table>');
+  if (filtered != 'A\tvisible') throw StateError(filtered);
+  for (final span in ['2tail', '9' * 1000]) {
+    try {
+      parseTable(
+          '<table><tr><td colspan="$span">merged</td><td>cell</td>'
+          '</tr></table>',
+          inputFormat: InputFormats.html);
+      throw StateError('Expected merged-cell rejection for $span');
+    } on ParseError {
+      // Huge and noncanonical spans have identical semantics in native and JS.
+    }
+  }
   final deepHtml = render('${'<span>' * 10000}<table>'
       '<tr><th>A</th><th>B</th></tr><tr><td>'
       '${'<span>' * 10000}value${'</span>' * 10000}'

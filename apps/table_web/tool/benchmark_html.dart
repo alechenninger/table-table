@@ -105,6 +105,14 @@ Iterable<_Fixture> _fixtures() sync* {
         '<span>&lt;tag&gt;&amp;&quot;quoted&quot;&nbsp;李明 👩🏽‍💻 '
         '&#x1f600;&#769;</span>',
   );
+  yield _grid(
+    'unique-styles-1000x10',
+    1000,
+    10,
+    cell: (row, column) =>
+        '<div style="display:flex;margin-left:${row * 10 + column}px">'
+        '<code>r$row-c$column</code><span>value</span></div>',
+  );
   yield _grid('unclosed-cells-10000x5', 10000, 5, closeTags: false);
   for (final depth in [1000, 10000]) {
     yield _Fixture(
