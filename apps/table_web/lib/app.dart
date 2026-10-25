@@ -305,8 +305,8 @@ class _TableAppState extends State<TableApp> {
           for (final count in _candidates)
             button(
               classes: _columns == count
-                  ? 'btn btn-active min-h-11 h-auto min-w-11 py-2 text-sm leading-6'
-                  : 'btn btn-ghost min-h-11 h-auto min-w-11 py-2 text-sm leading-6',
+                  ? 'btn btn-primary min-h-11 h-auto min-w-11 py-2 text-sm leading-6'
+                  : 'btn btn-outline border-base-content/40 min-h-11 h-auto min-w-11 py-2 text-sm leading-6',
               attributes: {'aria-pressed': '${_columns == count}'},
               onClick: () => _chooseColumns(count),
               [.text('$count')],
