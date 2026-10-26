@@ -1,7 +1,7 @@
 import 'package:characters/characters.dart';
 import 'package:jaspr/dom.dart';
 import 'package:jaspr/jaspr.dart';
-import 'package:table_table/slack_table.dart' as tables;
+import 'package:table_table/table_table.dart' as tables;
 
 import 'preview_data.dart';
 
@@ -23,12 +23,15 @@ class TablePreview extends StatelessComponent {
           attributes: {'role': 'status'},
           [.text(data.notice)],
         ),
-      if (data.markdown case final text?)
+      if (data.text case final text?)
         pre(
           classes:
               'm-0 max-h-96 max-w-full overflow-auto p-3 font-mono text-base leading-6 [tab-size:4] focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2 sm:p-4',
-          attributes: {'tabindex': '0', 'aria-label': 'Markdown output'},
-          [..._markdownText(text)],
+          attributes: {
+            'tabindex': '0',
+            'aria-label': data.isMarkdown ? 'Markdown output' : 'Output preview',
+          },
+          [if (data.isMarkdown) ..._markdownText(text) else .text(text)],
         )
       else
         div(
@@ -55,6 +58,8 @@ class TablePreview extends StatelessComponent {
     ]);
   }
 
+  // Copy feedback leaves the data unchanged; reuse its prepared Unicode spans
+  // and table children instead of regenerating the preview.
   @override
   bool shouldRebuild(covariant TablePreview newComponent) => !identical(data, newComponent.data);
 }

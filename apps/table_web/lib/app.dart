@@ -1,6 +1,6 @@
 import 'package:jaspr/dom.dart';
 import 'package:jaspr/jaspr.dart';
-import 'package:table_table/slack_table.dart' as tables;
+import 'package:table_table/table_table.dart' as tables;
 
 import 'clipboard_paste.dart';
 import 'conversion.dart';
@@ -56,20 +56,9 @@ class _TableAppState extends State<TableApp> {
         '| Day | Plan |\n| --- | --- |\n| Saturday | Farmers market |\n| Sunday | Hike |',
     'From ChatGPT app': 'Task\tStatus\nDraft proposal\tDone\nReview\tIn progress',
   };
-  static const _inputFormatLabels = {
+  static final _inputFormatLabels = {
     tables.InputFormats.auto: 'Auto-detect',
-    tables.InputFormats.html: 'HTML',
-    tables.InputFormats.markdown: 'Markdown',
-    tables.InputFormats.csv: 'CSV',
-    tables.InputFormats.tsv: 'TSV',
-    tables.InputFormats.pipe: 'Pipe-separated',
-    tables.InputFormats.cursor: 'Wrapped table text',
-    tables.InputFormats.spaced: 'Spaced cells',
-  };
-
-  static const _outputFormatLabels = {
-    tables.OutputFormats.slack: 'Slack',
-    tables.OutputFormats.markdown: 'Markdown',
+    for (final format in tables.tableFormats.inputs) format.id: format.label,
   };
 
   String _input = '';
@@ -397,14 +386,14 @@ class _TableAppState extends State<TableApp> {
         classes: 'output-format flex max-w-full flex-wrap rounded-field bg-base-200 p-1',
         attributes: {'role': 'group', 'aria-labelledby': 'copy-for-label'},
         [
-          for (final value in tables.OutputFormats.values)
+          for (final format in tables.tableFormats.outputs)
             button(
-              id: 'output-$value',
+              id: 'output-${format.id}',
               classes:
                   'btn btn-ghost min-h-11 h-auto border-0 px-3 py-2 text-sm leading-6 font-medium text-base-content/70 shadow-none aria-pressed:bg-base-100 aria-pressed:text-base-content aria-pressed:shadow-sm',
-              attributes: {'aria-pressed': '${_outputFormat == value}'},
-              onClick: () => _changeOutputFormat(value),
-              [.text(_outputFormatLabels[value]!)],
+              attributes: {'aria-pressed': '${_outputFormat == format.id}'},
+              onClick: () => _changeOutputFormat(format.id),
+              [.text(format.label)],
             ),
         ],
       ),
@@ -421,7 +410,8 @@ class _TableAppState extends State<TableApp> {
           id: 'copy-output',
           classes:
               'btn btn-primary copy-button min-h-11 h-auto w-full min-w-40 py-2 text-sm leading-6 sm:ml-auto sm:w-auto',
-          disabled: _output.isEmpty || _copyStatus.isPending,
+          // Reading _output here would eagerly format the full table on edits.
+          disabled: _conversion is! ReadyConversion || _copyStatus.isPending,
           onClick: _copy,
           [.text(_copyStatus == _CopyStatus.copied ? 'Table preserved.' : 'Copy table')],
         ),
@@ -586,7 +576,7 @@ class _TableAppState extends State<TableApp> {
   }
 
   Future<void> _copy() async {
-    if (_output.isEmpty || _copyStatus.isPending) return;
+    if (_conversion is! ReadyConversion || _copyStatus.isPending) return;
     final revision = _revision;
     setState(() {
       _copyStatus = _copyStatus.showFallback ? _CopyStatus.retrying : _CopyStatus.copying;
@@ -595,6 +585,13 @@ class _TableAppState extends State<TableApp> {
       await component.copyText(_output);
       if (!mounted || revision != _revision) return;
       setState(() => _copyStatus = _CopyStatus.copied);
+    } on tables.ParseError {
+      if (!mounted || revision != _revision) return;
+      setState(() {
+        _conversion = const InvalidConversion();
+        _preview = null;
+        _resetCopy();
+      });
     } catch (_) {
       if (!mounted || revision != _revision) return;
       setState(() => _copyStatus = _CopyStatus.failed);

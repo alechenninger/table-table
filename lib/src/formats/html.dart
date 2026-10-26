@@ -1,4 +1,17 @@
-part of 'core.dart';
+import 'dart:math' as math;
+
+import 'package:csslib/parser.dart' as css_parser;
+import 'package:html/dom.dart' as html;
+import 'package:html/parser.dart' as html_parser;
+import 'package:source_span/source_span.dart';
+
+import '../errors.dart';
+import '../formats.dart';
+import '../table.dart';
+import '../text_cells.dart';
+
+const htmlInput =
+    InputFormat(id: InputFormats.html, label: 'HTML', read: _parseHtml);
 
 final _htmlTableTag = RegExp(r'<table[\s>]', caseSensitive: false);
 final _htmlDisplayCandidate = RegExp(r'display|\\', caseSensitive: false);
@@ -37,7 +50,10 @@ const _htmlBlocks = {
   'ul',
 };
 
-Table _parseHtml(String text) {
+Table _parseHtml(String text, {int? columns}) {
+  if (!_htmlTableTag.hasMatch(text)) {
+    throw const ParseError('no HTML table found');
+  }
   // Parse inert data, never attach copied markup to a browser document.
   final styles = _HtmlStyles();
   final table = _firstHtmlTable(html_parser.parse(text), styles);
@@ -81,7 +97,7 @@ Table _parseHtml(String text) {
   if (rows.isEmpty || rows.every((row) => row.length < 2)) {
     throw const ParseError('HTML table must have at least two columns');
   }
-  return Table._parsed(rows, sourceFormat: InputFormats.html);
+  return Table(rows, sourceFormat: InputFormats.html);
 }
 
 html.Element? _firstHtmlTable(html.Node root, _HtmlStyles styles) {
@@ -142,12 +158,15 @@ int? _htmlSpanInteger(String source) {
   return negative && value != 0 ? null : value;
 }
 
+// Preserve the established HTML visible-text grammar: whitespace collapses and
+// block/layout boundaries introduce spaces. Rich formatting and CSS white-space
+// reconstruction are outside this reader's contract.
 String _htmlCellText(html.Element cell, _HtmlStyles styles) {
   // Most spreadsheet cells are empty or a single text node. Avoid allocating
   // a traversal stack and string buffer for these common cases.
   if (cell.nodes.isEmpty) return '';
   if (cell.nodes.length == 1 && cell.nodes.first is html.Text) {
-    return _cleanCell((cell.nodes.first as html.Text).data);
+    return cleanCell((cell.nodes.first as html.Text).data);
   }
   final text = StringBuffer();
   // Null marks a pending space, including the end of a block element. This
@@ -186,7 +205,7 @@ String _htmlCellText(html.Element cell, _HtmlStyles styles) {
       if (layout && i != 0) pending.add(null);
     }
   }
-  return _cleanCell(text.toString());
+  return cleanCell(text.toString());
 }
 
 enum _HtmlDisplay { natural, inline, block, inlineLayout, blockLayout, hidden }

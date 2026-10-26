@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:table_table/slack_table.dart';
+import 'package:table_table/table_table.dart';
 import 'package:table_table/src/cli.dart';
 import 'package:table_table/src/clipboard.dart';
 import 'package:table_table/src/clipboard/command_clipboard.dart';

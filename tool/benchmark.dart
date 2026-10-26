@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:table_table/slack_table.dart';
+import 'package:table_table/table_table.dart';
 
 int _sink = 0;
 

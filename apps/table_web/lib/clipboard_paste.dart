@@ -1,4 +1,4 @@
-import 'package:table_table/slack_table.dart' as tables;
+import 'package:table_table/table_table.dart' as tables;
 
 /// Source text paired with the immutable table parsed from that exact text.
 class ParsedInput {

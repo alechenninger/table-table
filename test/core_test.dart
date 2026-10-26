@@ -1,4 +1,4 @@
-import 'package:table_table/slack_table.dart';
+import 'package:table_table/table_table.dart';
 import 'package:test/test.dart';
 
 // Preserve the original implementation's inputs and expectations.

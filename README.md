@@ -199,12 +199,22 @@ A few things to know about the output:
 - Markdown uses the first row as the header. Padding accounts for wide CJK
   characters, combining marks, and emoji, though alignment still depends on
   the font used to display it.
-- Cell whitespace is trimmed and collapsed, including embedded tabs and line
-  breaks. Short rows are padded with empty cells.
+- Slack and Markdown trim and collapse cell whitespace, including embedded tabs
+  and line breaks. Readers preserve decoded cell content for destination switches;
+  short rows are padded with empty cells. CSV/TSV retain explicitly empty records
+  while ignoring physical blank lines. HTML retains its visible-text extraction
+  rules for whitespace and block boundaries.
 - Values stay as text, so IDs such as `001` keep their leading zeros.
 - Input must be text. Screenshots and image/OCR conversion are not supported.
 
 ## Contribute
+
+The comments in [the public library](lib/table_table.dart) explain the pipeline
+and its API contracts. The
+[measurement report](docs/format_pipeline_performance.md) records the remaining
+JavaScript performance decision. To contribute a format, add its module,
+register its descriptor and detection position in the catalog, and include
+fixtures, tests, and user documentation.
 
 A useful place to start is a table that doesn't survive conversion. For a bug
 report, include a small input example, the output you expected, and whether you
@@ -212,15 +222,18 @@ used the web app or CLI. Replace any private data before sharing it.
 
 The project has three main parts:
 
-| Where                                                                                     | What lives there                                        |
-| ----------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| [`lib/src/core.dart`](lib/src/core.dart)                                                  | Table parsing and formatting, with no I/O               |
-| [`lib/src/formats.dart`](lib/src/formats.dart)                                            | Format names shared by the library, CLI, and web app    |
-| [`lib/src/cli.dart`](lib/src/cli.dart)                                                    | Command-line behavior and clipboard format preference   |
-| [`lib/src/clipboard.dart`](lib/src/clipboard.dart) and [`clipboard/`](lib/src/clipboard/) | Clipboard snapshots, interface, and platform adapters   |
-| [`apps/table_web/`](apps/table_web/)                                                      | The Jaspr web app, styled with Tailwind CSS and daisyUI |
-| [`test/`](test/)                                                                          | Dart tests for parsing and formatting                   |
-| [`tests/cli_contract/`](tests/cli_contract/)                                              | Python tests that exercise the compiled commands        |
+| Where                                                                                       | What lives there                                         |
+| ------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| [`lib/src/core.dart`](lib/src/core.dart)                                                    | Compatibility entry points, with no I/O                  |
+| [`lib/src/table.dart`](lib/src/table.dart)                                                  | Immutable rectangular text cells                         |
+| [`lib/src/pipeline.dart`](lib/src/pipeline.dart) and [`catalog.dart`](lib/src/catalog.dart) | Detection, descriptors, and the supported format catalog |
+| [`lib/src/formats/`](lib/src/formats/)                                                      | Readers and destination-owned output policies            |
+| [`lib/src/formats.dart`](lib/src/formats.dart)                                              | Format and lazy preview contracts shared by frontends    |
+| [`lib/src/cli.dart`](lib/src/cli.dart)                                                      | Command-line behavior and clipboard format preference    |
+| [`lib/src/clipboard.dart`](lib/src/clipboard.dart) and [`clipboard/`](lib/src/clipboard/)   | Clipboard snapshots, interface, and platform adapters    |
+| [`apps/table_web/`](apps/table_web/)                                                        | The Jaspr web app, styled with Tailwind CSS and daisyUI  |
+| [`test/`](test/)                                                                            | Dart tests for parsing and formatting                    |
+| [`tests/cli_contract/`](tests/cli_contract/)                                                | Python tests that exercise the compiled commands         |
 
 Keep conversion behavior in the shared core so improvements reach both the CLI
 and web app. For parser fixes, include a small regression example in the core
@@ -310,11 +323,19 @@ once and the remaining operations for that fixture are skipped; this is not a
 timeout. Fixture generation, clipboard I/O, browser DOM rendering, and console
 output are excluded. `convert-preview-*` parses source directly, while
 `paste-preview-*` uses the clipboard's structured source-and-table result. Both
-paths parse once before formatting the output and preparing its preview.
+paths parse once before preparing a bounded preview and then requesting full output.
+
+For frontend lifecycle measurements (preview, first copy, repeated reads, and
+switching destinations), run `tool/benchmark_pipeline.dart` from the web package
+with the same native and JavaScript compiler options above. It includes tall,
+wide Unicode, multiline/whitespace-heavy, and long-cell fixtures. Optional fixture
+filters select workloads; `--once --mode=preview-full-slack` runs one conversion
+for an external peak-memory monitor. The `latency-*` records separate preview,
+first-copy, and total time. Benchmark timings are not assertions in unit tests.
 
 ## Use the Dart library
 
-The public API is in [`lib/slack_table.dart`](lib/slack_table.dart). The package
+The public API is in [`lib/table_table.dart`](lib/table_table.dart). The package
 is not published to pub.dev; another local Dart project can use a path dependency
 on this checkout:
 
@@ -325,7 +346,7 @@ dependencies:
 ```
 
 ```dart
-import 'package:table_table/slack_table.dart';
+import 'package:table_table/table_table.dart';
 
 final slackText = render('Name,Role\nAda,Engineering');
 final markdown = render(
@@ -333,10 +354,17 @@ final markdown = render(
   outputFormat: OutputFormats.markdown,
 );
 
-// Parse once if you need to inspect the cells or produce both formats.
+// Parse once and retain one lazy session for the selected destination.
+final parsed = tableFormats.parse('Name,Role\nAda,Engineering');
+final formatted = tableFormats.prepare(parsed.table, outputFormat: 'slack');
+final preview = formatted.preview(maxRows: 51, maxColumns: 20);
+// Display preview.table when provided, otherwise preview.text.
+// Request the complete string on copy or complete-source display.
+final copied = formatted.fullText;
+
+// Existing convenience entry points remain available.
 final table = parseTable('Name,Role\nAda,Engineering');
-final rows = table.rows;
-final formatted = formatMarkdown(table);
+final markdownText = formatMarkdown(table);
 ```
 
 The library performs no I/O. Invalid input throws `ParseError`; ambiguous

@@ -1,5 +1,5 @@
 import 'package:jaspr_test/jaspr_test.dart';
-import 'package:table_table/slack_table.dart' as tables;
+import 'package:table_table/table_table.dart' as tables;
 import 'package:table_table_web/clipboard_paste.dart';
 
 void main() {

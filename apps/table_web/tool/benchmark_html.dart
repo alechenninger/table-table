@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:table_table/slack_table.dart' as tables;
+import 'package:table_table/table_table.dart' as tables;
 import 'package:table_table_web/clipboard_paste.dart';
 import 'package:table_table_web/conversion.dart';
 import 'package:table_table_web/preview_data.dart';

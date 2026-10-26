@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:table_table/slack_table.dart';
+import 'package:table_table/table_table.dart';
 import 'package:table_table/src/clipboard.dart';
 import 'package:table_table/src/clipboard/macos_clipboard.dart';
 import 'package:table_table/src/clipboard_table.dart';

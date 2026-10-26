@@ -4,7 +4,7 @@ import 'dart:io';
 
 import 'package:args/args.dart';
 
-import '../slack_table.dart';
+import '../table_table.dart';
 import 'clipboard.dart';
 import 'clipboard/system_clipboard.dart';
 import 'clipboard_table.dart';
@@ -93,9 +93,8 @@ class _Cli {
     if (args.flag('copy') || copyByDefault) {
       await _clipboard.write(ClipboardSnapshot.text(output));
       if (!args.flag('quiet') && stderr.hasTerminal) {
-        final label = outputFormat == OutputFormats.markdown
-            ? 'Markdown table'
-            : 'Slack-native table data';
+        final label =
+            '${tableFormats.outputs.firstWhere((format) => format.id == outputFormat).label} table';
         stderr.writeln('Copied $label to the clipboard.');
       }
     }
@@ -231,7 +230,10 @@ class _Cli {
 
 ArgParser _buildParser(String defaultOutput) => ArgParser()
   ..addOption('input',
-      allowed: InputFormats.values,
+      allowed: [
+        InputFormats.auto,
+        for (final format in tableFormats.inputs) format.id
+      ],
       defaultsTo: InputFormats.auto,
       help: 'Input format to parse.')
   ..addOption('columns',
@@ -239,7 +241,7 @@ ArgParser _buildParser(String defaultOutput) => ArgParser()
       help:
           'Column count for blank-line-separated cells; prompts if ambiguous.')
   ..addOption('output',
-      allowed: OutputFormats.values,
+      allowed: [for (final format in tableFormats.outputs) format.id],
       defaultsTo: defaultOutput,
       help: 'Output format.')
   ..addFlag('copy',

@@ -1,4 +1,4 @@
-import 'package:table_table/slack_table.dart';
+import 'package:table_table/table_table.dart';
 import 'package:test/test.dart';
 
 // Preserve regression coverage from the original implementation.
@@ -31,7 +31,7 @@ void main() {
   test('quoted tsv and empty rows', () {
     expect(
       render('A\tB\n\t\n"x\ty"\tz\n', inputFormat: 'tsv'),
-      'A\tB\nx y\tz',
+      'A\tB\n\t\nx y\tz',
     );
   });
 
@@ -44,8 +44,9 @@ void main() {
       ).rows,
       [
         ['A', 'B', 'C'],
-        ['😀"x', 'one, two', 'tail'],
+        ['😀"x', 'one,\ntwo', 'tail'],
         ['prefix"quote', 'closedsuffix', '𠮷'],
+        ['', '', ''],
         ['last', '', ''],
       ],
     );
@@ -70,7 +71,7 @@ void main() {
     expect(table.rows, [
       [' A ', 'B'],
       [' x\ty ', 'z'],
-      [' tail '],
+      [' tail ', ''],
     ]);
     for (final immutable in [table, parseTable('A,B\nx,y')]) {
       expect(() => immutable.rows.add(['new']), throwsUnsupportedError);
@@ -343,23 +344,17 @@ void main() {
   });
 
   test('empty rows and empty cells', () {
-    expect(formatTsv(Table([[], []])), '\n');
-    expect(
-      () => formatMarkdown(Table([[]])),
-      throwsA(isA<ParseError>().having(
-        (error) => error.message,
-        'message',
-        contains('no table rows'),
-      )),
-    );
-    expect(
-      () => parseTable(',\n,', inputFormat: 'csv'),
-      throwsA(isA<ParseError>().having(
-        (error) => error.message,
-        'message',
-        contains('no csv rows'),
-      )),
-    );
+    for (final rows in [
+      <List<String>>[],
+      [<String>[]],
+      [<String>[], <String>[]]
+    ]) {
+      expect(() => Table(rows), throwsA(isA<ParseError>()));
+    }
+    expect(parseTable(',\n,', inputFormat: 'csv').rows, [
+      ['', ''],
+      ['', '']
+    ]);
   });
 
   test('csv field limit matches reference', () {

@@ -1,8 +1,52 @@
 import 'package:jaspr_test/jaspr_test.dart';
-import 'package:table_table/slack_table.dart' as tables;
+import 'package:table_table/table_table.dart' as tables;
+import 'package:table_table/src/delimited_format_session.dart';
 import 'package:table_table_web/conversion.dart';
+import 'package:table_table_web/preview_data.dart';
 
 void main() {
+  test('conversion retains its lazy session through previews and repeated copy reads', () {
+    final table = tables.Table([
+      for (var row = 0; row < 100; row++) ['r$row', 'value'],
+    ]);
+    var visits = 0;
+    final session = DelimitedFormatSession(
+      table,
+      prepareCell: (cell) {
+        visits++;
+        return cell;
+      },
+      columnSeparator: '\t',
+      rowSeparator: '\n',
+      showGrid: true,
+    );
+    final conversion = ReadyConversion(table: table, formatted: session, outputFormat: 'slack');
+    expect(visits, 0);
+    PreviewData.fromConversion(conversion, 'slack');
+    expect(visits, 102);
+    expect(conversion.withOutputFormat('slack'), same(conversion));
+    expect(conversion.output, endsWith('r99\tvalue'));
+    expect(visits, 200);
+    conversion.output;
+    expect(visits, 200);
+  });
+
+  test('destination previews clean preserved cells without changing the source', () {
+    final conversion =
+        Conversion.fromInput(
+              'A,B\n001,"  one\t two\nthree  "',
+              inputFormat: 'csv',
+              outputFormat: 'slack',
+            )
+            as ReadyConversion;
+    final preview = PreviewData.fromConversion(conversion, 'slack');
+    expect(preview.rows[1], ['001', 'one two three']);
+    expect(conversion.table.rows[1][1], '  one\t two\nthree  ');
+    final markdown = conversion.withOutputFormat('markdown') as ReadyConversion;
+    expect(PreviewData.fromConversion(markdown, 'markdown').markdown, contains('one two three'));
+    expect(markdown.table, same(conversion.table));
+  });
+
   test('input distinguishes empty, invalid, ambiguous, and ready results', () {
     expect(_convert(' \n '), isA<EmptyConversion>());
     expect(_convert('not a table'), isA<InvalidConversion>());

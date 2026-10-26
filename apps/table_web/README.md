@@ -73,10 +73,10 @@ padding can differ from the full output. Markdown padding also counts toward
 the text budget; large previews stop at a line boundary and report the actual
 number of shown rows.
 
-`PreviewData` is prepared once per conversion or output-format change.
-`TablePreview` skips rebuilding when that data is unchanged, so copy-button
-feedback does not regenerate cells or Unicode presentation spans. The full
-conversion remains synchronous in the shared core.
+`Conversion` retains the source and current formatting session through UI-only
+changes. Copy and manual-copy fallback request complete output on demand;
+formatting remains synchronous. Cache lifetime and preview contracts are documented
+beside `ReadyConversion`, `TablePreview`, and the shared `FormattedTable` interface.
 
 Clear input becomes Undo clear until the user enters new text or loads an example.
 Undo restores the original input, source format, and column choice while retaining

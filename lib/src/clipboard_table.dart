@@ -1,4 +1,4 @@
-import '../slack_table.dart';
+import '../table_table.dart';
 import 'clipboard.dart';
 
 /// Select a representation and parse it once. HTML is preferred only when the

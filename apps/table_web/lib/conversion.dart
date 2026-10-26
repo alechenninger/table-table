@@ -1,4 +1,4 @@
-import 'package:table_table/slack_table.dart' as tables;
+import 'package:table_table/table_table.dart' as tables;
 
 /// The result of interpreting the current input, including any column choices.
 sealed class Conversion {
@@ -43,7 +43,8 @@ sealed class Conversion {
     try {
       return ReadyConversion(
         table: table,
-        output: tables.formatTable(table, outputFormat: outputFormat),
+        formatted: tables.tableFormats.prepare(table, outputFormat: outputFormat),
+        outputFormat: outputFormat,
         candidates: candidates,
       );
     } on tables.ParseError {
@@ -52,10 +53,13 @@ sealed class Conversion {
   }
 
   /// Reuse the parsed table and preserve column choices when changing output.
+  /// Replacing the session releases the old destination's cache instead of
+  /// accumulating prepared output for every destination the user visits.
   Conversion withOutputFormat(String outputFormat) => switch (this) {
-    ReadyConversion(:final table, :final candidates) => ReadyConversion(
-      table: table,
-      output: tables.formatTable(table, outputFormat: outputFormat),
+    ReadyConversion(outputFormat: final current) when current == outputFormat => this,
+    ReadyConversion(:final table, :final candidates) => Conversion.fromTable(
+      table,
+      outputFormat: outputFormat,
       candidates: candidates,
     ),
     EmptyConversion() || AmbiguousConversion() || InvalidConversion() => this,
@@ -76,11 +80,21 @@ final class InvalidConversion extends Conversion {
   const InvalidConversion();
 }
 
+/// Retain one source and session through UI feedback changes. Building a preview
+/// must not read [output]: first-copy formatting is deferred and synchronous.
 final class ReadyConversion extends Conversion {
   final tables.Table table;
-  final String output;
+  final tables.FormattedTable formatted;
+  final String outputFormat;
   final List<int> candidates;
 
-  ReadyConversion({required this.table, required this.output, List<int> candidates = const []})
-    : candidates = List.unmodifiable(candidates);
+  ReadyConversion({
+    required this.table,
+    required this.formatted,
+    required this.outputFormat,
+    List<int> candidates = const [],
+  }) : candidates = List.unmodifiable(candidates);
+
+  /// Complete text is requested only on copy or full-source display.
+  String get output => formatted.fullText;
 }

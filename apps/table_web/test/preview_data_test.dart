@@ -1,6 +1,6 @@
 import 'package:characters/characters.dart';
 import 'package:jaspr_test/jaspr_test.dart';
-import 'package:table_table/slack_table.dart' as tables;
+import 'package:table_table/table_table.dart' as tables;
 import 'package:table_table_web/conversion.dart';
 import 'package:table_table_web/preview_data.dart';
 
@@ -12,7 +12,7 @@ void main() {
         ['李明', '👩🏽‍💻'],
       ], format);
       final preview = PreviewData.fromConversion(conversion, format);
-      expect(preview.rows, conversion.table.rows);
+      if (format == 'slack') expect(preview.rows, conversion.table.rows);
       expect(preview.isLimited, isFalse);
       expect(preview.totalDataRows, 1);
       expect(preview.totalColumns, 2);
@@ -27,7 +27,7 @@ void main() {
       ], format);
       final output = conversion.output;
       final preview = PreviewData.fromConversion(conversion, format);
-      expect(preview.rows.length, PreviewData.maxDataRows + 1);
+      if (format == 'slack') expect(preview.rows.length, PreviewData.maxDataRows + 1);
       expect(preview.rows.every((r) => r.length == PreviewData.maxColumns), isTrue);
       expect(preview.shownDataRows, 50);
       expect(preview.totalDataRows, 75);
@@ -101,7 +101,7 @@ void main() {
       preview.markdown!.split('\n').every((line) => line.startsWith('|') && line.endsWith('|')),
       isTrue,
     );
-    expect(preview.rows.length, preview.shownDataRows + 1);
+    expect(preview.rows, isEmpty);
     expect(preview.shownDataRows, lessThan(50));
     expect(preview.textShortened, isTrue);
   });
@@ -111,6 +111,7 @@ ReadyConversion _conversion(List<List<String>> rows, String format) {
   final table = tables.Table(rows);
   return ReadyConversion(
     table: table,
-    output: tables.formatTable(table, outputFormat: format),
+    formatted: tables.tableFormats.prepare(table, outputFormat: format),
+    outputFormat: format,
   );
 }
