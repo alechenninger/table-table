@@ -86,7 +86,7 @@ class _TableAppState extends State<TableApp> {
         ],
       ),
       p(classes: 'mt-4 text-sm leading-6 text-base-content/70', [
-        .text('Something not working? '),
+        .text('Something we could improve? '),
         a(
           href: '$_repositoryUrl/issues/new',
           classes: 'underline underline-offset-2 hover:text-base-content',
