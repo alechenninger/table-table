@@ -6,11 +6,22 @@ abstract final class InputFormats {
   static const cursor = 'cursor';
   static const csv = 'csv';
   static const tsv = 'tsv';
+  static const spaceAligned = 'space-aligned';
   static const pipe = 'pipe';
   static const spaced = 'spaced';
 
   /// Compatibility list of built-in choices. Frontends enumerate the catalog.
-  static const values = [auto, html, markdown, cursor, csv, tsv, pipe, spaced];
+  static const values = [
+    auto,
+    html,
+    markdown,
+    cursor,
+    csv,
+    tsv,
+    spaceAligned,
+    pipe,
+    spaced
+  ];
 }
 
 /// Output identifiers shared by the formatters and their frontends.

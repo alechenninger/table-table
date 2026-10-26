@@ -11,6 +11,7 @@ void main() {
       InputFormats.cursor: 'A\tB\tC\n1\n2\n3',
       InputFormats.csv: 'A,B\n1,2',
       InputFormats.tsv: 'A\tB\n1\t2',
+      InputFormats.spaceAligned: 'NAME   AGE\nweb    1d',
       InputFormats.pipe: 'A|B\n1|2',
       InputFormats.spaced: 'A\n\nB\n\n1\n\n2',
     };

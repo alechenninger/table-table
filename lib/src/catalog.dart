@@ -3,6 +3,7 @@ import 'formats/cursor.dart';
 import 'formats/html.dart';
 import 'formats/markdown.dart';
 import 'formats/slack.dart';
+import 'formats/space_aligned.dart';
 import 'formats/spaced.dart';
 import 'formats/tsv.dart';
 import 'pipeline.dart';
@@ -20,17 +21,20 @@ final tableFormats = FormatRegistry(
     cursorInput,
     csvInput,
     tsvInput,
+    spaceAlignedInput,
     pipeInput,
     spacedInput
   ],
   outputs: [slackOutput, markdownOutput],
   // Specialized tables precede general delimiters. A tab scan is shared by
   // wrapped text and TSV, and TSV wins over CSV when both delimiters occur.
+  // Space-aligned cells can contain commas (for example, kubectl service ports).
   detectionOrder: [
     'html',
     'markdown',
     'cursor',
     'tsv',
+    'space-aligned',
     'csv',
     'pipe',
     'spaced'

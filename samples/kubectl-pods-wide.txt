@@ -1,0 +1,13 @@
+NAMESPACE            NAME                                                  READY   STATUS              RESTARTS   AGE   IP           NODE                          NOMINATED NODE   READINESS GATES
+kube-system          coredns-559f6c778d-7s4tn                              1/1     Running             0          70s   10.244.0.3   table-samples-control-plane   <none>           <none>
+kube-system          coredns-559f6c778d-wvmnp                              1/1     Running             0          70s   10.244.0.2   table-samples-control-plane   <none>           <none>
+kube-system          etcd-table-samples-control-plane                      1/1     Running             0          77s   10.89.0.12   table-samples-control-plane   <none>           <none>
+kube-system          kindnet-78cth                                         1/1     Running             0          70s   10.89.0.12   table-samples-control-plane   <none>           <none>
+kube-system          kube-apiserver-table-samples-control-plane            1/1     Running             0          78s   10.89.0.12   table-samples-control-plane   <none>           <none>
+kube-system          kube-controller-manager-table-samples-control-plane   1/1     Running             0          77s   10.89.0.12   table-samples-control-plane   <none>           <none>
+kube-system          kube-proxy-ckv6t                                      1/1     Running             0          70s   10.89.0.12   table-samples-control-plane   <none>           <none>
+kube-system          kube-scheduler-table-samples-control-plane            1/1     Running             0          77s   10.89.0.12   table-samples-control-plane   <none>           <none>
+local-path-storage   local-path-provisioner-75f7fc7dc5-wfr5g               1/1     Running             0          70s   10.244.0.4   table-samples-control-plane   <none>           <none>
+table-demo           cache-64787dd557-q7wh2                                0/1     ContainerCreating   0          51s   <none>       table-samples-control-plane   <none>           <none>
+table-demo           frontend-74d4b967c5-446nj                             0/1     ContainerCreating   0          51s   <none>       table-samples-control-plane   <none>           <none>
+table-demo           frontend-74d4b967c5-hnw6p                             0/1     ContainerCreating   0          51s   <none>       table-samples-control-plane   <none>           <none>

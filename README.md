@@ -169,15 +169,16 @@ which has not been tested here.
 Input is detected automatically. If it guesses wrong, choose a format in the
 web app or pass `--input FORMAT` to the CLI.
 
-| Input                                                    | CLI format |
-| -------------------------------------------------------- | ---------- |
-| HTML tables, including nested content within cells       | `html`     |
-| Markdown tables, including the header separator          | `markdown` |
-| Comma-separated values, including quoted cells           | `csv`      |
-| Tab-separated values, such as copied spreadsheet cells   | `tsv`      |
-| Rows separated by pipes (`Name \| Role`)                 | `pipe`     |
-| Wrapped table text, including Cursor canvas copies       | `cursor`   |
-| Cells separated by blank lines, such as Jira Rovo copies | `spaced`   |
+| Input                                                    | CLI format      |
+| -------------------------------------------------------- | --------------- |
+| HTML tables, including nested content within cells       | `html`          |
+| Markdown tables, including the header separator          | `markdown`      |
+| Comma-separated values, including quoted cells           | `csv`           |
+| Tab-separated values, such as copied spreadsheet cells   | `tsv`           |
+| Space-aligned tables, such as `kubectl get` output       | `space-aligned` |
+| Rows separated by pipes (`Name \| Role`)                 | `pipe`          |
+| Wrapped table text, including Cursor canvas copies       | `cursor`        |
+| Cells separated by blank lines, such as Jira Rovo copies | `spaced`        |
 
 Blank-line-separated cells may need a column count. The web app and interactive
 CLI ask when necessary; in a script, supply it explicitly:
@@ -185,6 +186,20 @@ CLI ask when necessary; in a script, supply it explicitly:
 ```sh
 slack-table --input spaced --columns 3 copied-table.txt
 ```
+
+For space-aligned tables, keep the header and original spacing. For example,
+paste or pipe kubectl output:
+
+```sh
+kubectl get pods --all-namespaces -o wide | slack-table
+kubectl get services | md-table --input space-aligned
+```
+
+The reader uses headers separated by two or more spaces to locate columns. It
+preserves multiword headers and values, empty cells, and comma-separated port
+mappings. Include at least two columns and a header; kubectl output from
+`--no-headers` is unsupported. See [captured kubectl examples](samples/), or
+choose **From kubectl** in the web app's example menu.
 
 HTML conversion uses the first table outside templates and hidden subtrees.
 Elements marked `hidden` or with inline `display:none` are omitted, including

@@ -7,6 +7,11 @@ import 'package:table_table/src/clipboard_table.dart';
 void main() {
   final output = render('Name,Count\nAlpha,12');
   if (output != 'Name\tCount\nAlpha\t12') throw StateError(output);
+  final spaceAligned = render('NAME   PORT(S)          AGE\n'
+      'web    80/TCP,443/TCP   1d');
+  if (spaceAligned != 'NAME\tPORT(S)\tAGE\nweb\t80/TCP,443/TCP\t1d') {
+    throw StateError(spaceAligned);
+  }
   final clipboard = parseClipboardTable(ClipboardSnapshot({
     ClipboardFormat.plainText: 'wrong,table',
     ClipboardFormat.html:

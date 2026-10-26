@@ -107,6 +107,24 @@ void main() {
     expect(find.text('Table preserved.'), findsOneComponent);
   });
 
+  testComponents('space-aligned input is detected and available in the format selector', (
+    tester,
+  ) async {
+    String? copied;
+    tester.pumpComponent(TableApp(copyText: (text) async => copied = text));
+    await _enter(tester, 'NAME   PORT(S)          AGE\nweb    80/TCP,443/TCP   1d');
+    expect(find.text('Auto: Space-aligned'), findsOneComponent);
+    expect(find.text('1 data row · 3 columns'), findsOneComponent);
+    expect(find.text('80/TCP,443/TCP'), findsOneComponent);
+
+    (find.byType(select).evaluate().single.component as select).onChange!(['space-aligned']);
+    await tester.pump();
+    expect(find.text('Auto: Space-aligned'), findsNothing);
+    expect(find.text('1 data row · 3 columns'), findsOneComponent);
+    await tester.click(_button('copy-output'));
+    expect(copied, 'NAME\tPORT(S)\tAGE\nweb\t80/TCP,443/TCP\t1d');
+  });
+
   testComponents('rich paste keeps HTML source while converting the output', (tester) async {
     String? copied;
     late void Function(ParsedInput) applyPaste;
@@ -303,6 +321,11 @@ void main() {
       source: 'From ChatGPT app',
       format: 'TSV',
       output: 'Task\tStatus\nDraft proposal\tDone\nReview\tIn progress',
+    ),
+    (
+      source: 'From kubectl',
+      format: 'Space-aligned',
+      output: 'NAME\tAGE\nfrontend\t51s\ncache\t51s',
     ),
   ]) {
     testComponents('${example.source} example and clear update both panes', (tester) async {

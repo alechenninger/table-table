@@ -55,6 +55,7 @@ class _TableAppState extends State<TableApp> {
     'From markdown':
         '| Day | Plan |\n| --- | --- |\n| Saturday | Farmers market |\n| Sunday | Hike |',
     'From ChatGPT app': 'Task\tStatus\nDraft proposal\tDone\nReview\tIn progress',
+    'From kubectl': 'NAME       AGE\nfrontend   51s\ncache      51s',
   };
   static final _inputFormatLabels = {
     tables.InputFormats.auto: 'Auto-detect',

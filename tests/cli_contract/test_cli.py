@@ -105,6 +105,13 @@ pathlib.Path(os.environ['TEST_CLIPBOARD']).write_bytes(sys.stdin.buffer.read())
                 )
                 self.assert_success(self.run_cli(flags, 'Name,Count\nAlpha,12'), expected)
 
+    def test_space_aligned_input_from_stdin(self):
+        source = 'NAME   PORT(S)          AGE\nweb    80/TCP,443/TCP   1d\n'
+        for flags in ([], ['--input', 'space-aligned']):
+            with self.subTest(flags=flags):
+                self.assert_success(self.run_cli(flags, source),
+                                    'NAME\tPORT(S)\tAGE\nweb\t80/TCP,443/TCP\t1d\n')
+
     def test_markdown_entry_point_and_output_override(self):
         self.assert_success(self.run_cli(text='A,B', executable=MARKDOWN),
                             '| A   | B   |\n| --- | --- |\n')
