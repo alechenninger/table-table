@@ -21,6 +21,8 @@ void main() {
       expect(table.sourceFormat,
           format == InputFormats.auto ? InputFormats.csv : format);
       expect(table.rows.length, 2, reason: format);
+      expect(table.columnAlignments, everyElement(ColumnAlignment.unspecified),
+          reason: format);
     }
   });
 

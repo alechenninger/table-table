@@ -30,5 +30,8 @@ String formatTable(Table table, {String outputFormat = OutputFormats.slack}) =>
 String formatTsv(Table table) => formatTable(table);
 
 /// Render Markdown padded to display columns, using the first row as the header.
+/// Column alignment is retained in the header separator's colon markers.
+/// Header and body padding follows column alignment; odd center padding places
+/// the extra space on the right. Unspecified columns are left-aligned.
 String formatMarkdown(Table table) =>
     formatTable(table, outputFormat: OutputFormats.markdown);

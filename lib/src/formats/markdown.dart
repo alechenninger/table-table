@@ -18,13 +18,27 @@ final _separator = RegExp(r'^:?-{3,}:?$');
 String _escapeMarkdownCell(String cell) =>
     cell.replaceAll('\\', '\\\\').replaceAll('|', r'\|');
 
-String _formatMarkdownRow(
-    List<String> row, List<int> columnWidths, List<int> measuredWidths) {
+String _formatMarkdownRow(List<String> row, List<int> columnWidths,
+    List<int> measuredWidths, List<ColumnAlignment> alignments) {
   final paddedCells = <String>[];
   for (var column = 0; column < row.length; column++) {
     final cell = row[column];
     final padding = columnWidths[column] - measuredWidths[column];
-    paddedCells.add(cell + ' ' * padding);
+    if (padding == 0) {
+      paddedCells.add(cell);
+      continue;
+    }
+    switch (alignments[column]) {
+      case ColumnAlignment.unspecified || ColumnAlignment.left:
+        paddedCells.add(cell + ' ' * padding);
+      case ColumnAlignment.right:
+        paddedCells.add(' ' * padding + cell);
+      case ColumnAlignment.center:
+        // Reuse measured display widths; odd padding leaves one more space on
+        // the right so centering is deterministic for headers and body cells.
+        final leading = padding ~/ 2;
+        paddedCells.add('${' ' * leading}$cell${' ' * (padding - leading)}');
+    }
   }
   return '| ${paddedCells.join(' | ')} |';
 }
@@ -62,6 +76,7 @@ Table _readMarkdown(String text, {int? columns}) {
         ],
         ...body,
       ],
+      columnAlignments: separator.map(_readAlignment).toList(),
       sourceFormat: InputFormats.markdown,
     );
   }
@@ -82,8 +97,18 @@ Table _readPipe(String text, {int? columns}) {
     throw const ParseError(
         'pipe-delimited input must have at least two columns');
   }
-  if (rows.length > 1 && _isSeparatorRow(rows[1])) rows.removeAt(1);
-  return Table(rows, sourceFormat: InputFormats.pipe);
+  final alignments = rows.length > 1 && _isSeparatorRow(rows[1])
+      ? rows.removeAt(1).map(_readAlignment).toList()
+      : const <ColumnAlignment>[];
+  // A consumed separator can describe columns omitted from every content row.
+  if (alignments.length > rows.first.length) {
+    rows[0] = [
+      ...rows.first,
+      ...List<String>.filled(alignments.length - rows.first.length, ''),
+    ];
+  }
+  return Table(rows,
+      columnAlignments: alignments, sourceFormat: InputFormats.pipe);
 }
 
 List<String> _nonEmptyLines(String text) =>
@@ -127,6 +152,25 @@ List<String> _splitMarkdownRow(String line) {
 
 bool _isSeparatorRow(List<String> cells) =>
     cells.isNotEmpty && cells.every((cell) => _separator.hasMatch(strip(cell)));
+
+ColumnAlignment _readAlignment(String separator) {
+  if (separator.startsWith(':')) {
+    return separator.endsWith(':')
+        ? ColumnAlignment.center
+        : ColumnAlignment.left;
+  }
+  return separator.endsWith(':')
+      ? ColumnAlignment.right
+      : ColumnAlignment.unspecified;
+}
+
+String _formatSeparator(ColumnAlignment alignment, int width) =>
+    switch (alignment) {
+      ColumnAlignment.unspecified => '-' * width,
+      ColumnAlignment.left => ':${'-' * (width - 1)}',
+      ColumnAlignment.center => ':${'-' * (width - 2)}:',
+      ColumnAlignment.right => '${'-' * (width - 1)}:',
+    };
 
 FormattedTable _prepareMarkdown(Table table) => _MarkdownSession(table);
 
@@ -259,18 +303,32 @@ final class _MarkdownSession implements FormattedTable {
   }
 
   String _render(_MarkdownCells cells) {
-    final columnWidths = List<int>.filled(cells.values.first.length, 3);
+    // Keep at least three hyphens, including when colons occupy source columns.
+    final columnWidths = [
+      for (var column = 0; column < cells.values.first.length; column++)
+        switch (_table.columnAlignments[column]) {
+          ColumnAlignment.unspecified => 3,
+          ColumnAlignment.left || ColumnAlignment.right => 4,
+          ColumnAlignment.center => 5,
+        },
+    ];
     for (final widths in cells.widths) {
       for (var column = 0; column < widths.length; column++) {
         columnWidths[column] = math.max(columnWidths[column], widths[column]);
       }
     }
-    final separator = [for (final width in columnWidths) '-' * width];
+    final separator = [
+      for (var column = 0; column < columnWidths.length; column++)
+        _formatSeparator(_table.columnAlignments[column], columnWidths[column]),
+    ];
     return [
-      _formatMarkdownRow(cells.values.first, columnWidths, cells.widths.first),
-      _formatMarkdownRow(separator, columnWidths, columnWidths),
+      _formatMarkdownRow(cells.values.first, columnWidths, cells.widths.first,
+          _table.columnAlignments),
+      _formatMarkdownRow(
+          separator, columnWidths, columnWidths, _table.columnAlignments),
       for (var row = 1; row < cells.values.length; row++)
-        _formatMarkdownRow(cells.values[row], columnWidths, cells.widths[row]),
+        _formatMarkdownRow(cells.values[row], columnWidths, cells.widths[row],
+            _table.columnAlignments),
     ].join('\n');
   }
 }

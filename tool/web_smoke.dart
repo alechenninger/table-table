@@ -54,6 +54,22 @@ void main() {
   if (markdown != '| 李明 | e\u0301   |\n| ---- | --- |\n| x    | y   |') {
     throw StateError(markdown);
   }
+  final aligned = parseTable('| A | B | C | D |\n'
+      '| --- | :--- | :---: | ---: |\n'
+      '| a | b | c | d |');
+  final alignedOutput = formatMarkdown(aligned);
+  final roundTrip = parseTable(alignedOutput);
+  if (roundTrip.columnAlignments.join(',') !=
+          ColumnAlignment.values.join(',') ||
+      alignedOutput.split('\n')[1] != '| --- | :--- | :---: | ---: |') {
+    throw StateError('column alignment round trip failed: $alignedOutput');
+  }
+  if (alignedOutput !=
+      '| A   | B    |   C   |    D |\n'
+          '| --- | :--- | :---: | ---: |\n'
+          '| a   | b    |   c   |    d |') {
+    throw StateError('visual column alignment failed: $alignedOutput');
+  }
   try {
     parseTable(List.generate(12, (i) => '$i').join('\n\n'));
     throw StateError('Expected ambiguous columns');

@@ -10,6 +10,7 @@ export 'preview_text.dart' show PreviewTextLimits;
 ///
 /// Start [read] with a cheap syntax check before doing expensive parsing. Remove
 /// the input's syntax and keep cell content intact for the destination to format.
+/// Preserve supported column alignment in [Table.columnAlignments].
 /// Throw ParseError on failure, or AmbiguousColumnsError when the user needs to
 /// choose a column count.
 final class InputFormat {
@@ -30,8 +31,9 @@ final class InputFormat {
 
 /// A destination, such as Slack, or a text format, such as Markdown.
 ///
-/// The writer chooses cleanup and escaping. A format can provide a reader, a
-/// writer, or both. Clipboard access stays with the caller.
+/// The writer chooses cleanup, escaping, and how to represent column alignment.
+/// A format can provide a reader, a writer, or both. Clipboard access stays with
+/// the caller.
 final class OutputFormat {
   final String id;
   final String label;

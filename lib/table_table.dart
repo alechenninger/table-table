@@ -10,7 +10,8 @@
 ///
 /// Each destination starts with the original cells. This lets writers make
 /// different choices about spaces, quoting, and line breaks without losing
-/// content when the user changes destinations.
+/// content when the user changes destinations. Column alignment stays on the
+/// original [Table], so destinations can retain it when their format supports it.
 ///
 /// Formatting happens when a preview or complete text is requested. A session
 /// keeps its most recent preview and, once requested, the complete output string.

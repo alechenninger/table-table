@@ -212,8 +212,14 @@ remain unsupported. Span attributes follow HTML's integer parsing and defaults:
 A few things to know about the output:
 
 - Markdown uses the first row as the header. Padding accounts for wide CJK
-  characters, combining marks, and emoji, though alignment still depends on
-  the font used to display it.
+  characters, combining marks, and emoji. Headers and body cells are visually
+  left-, center-, or right-aligned in the source according to column alignment;
+  unspecified alignment defaults to left. Odd center padding puts the extra
+  space on the right. Appearance still depends on the font used to display it.
+- Explicit column alignment from Markdown separator markers (`:---`, `:---:`,
+  `---:`) is retained in Markdown output, including when read as pipe-separated
+  input. Slack output ignores alignment; switching destinations in the web app
+  retains it. Other readers currently leave alignment unspecified.
 - Slack and Markdown trim and collapse cell whitespace, including embedded tabs
   and line breaks. Readers preserve decoded cell content for destination switches;
   short rows are padded with empty cells. CSV/TSV retain explicitly empty records
@@ -240,7 +246,7 @@ The project has three main parts:
 | Where                                                                                       | What lives there                                         |
 | ------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
 | [`lib/src/core.dart`](lib/src/core.dart)                                                    | Compatibility entry points, with no I/O                  |
-| [`lib/src/table.dart`](lib/src/table.dart)                                                  | Immutable rectangular text cells                         |
+| [`lib/src/table.dart`](lib/src/table.dart)                                                  | Immutable rectangular text cells and column alignment    |
 | [`lib/src/pipeline.dart`](lib/src/pipeline.dart) and [`catalog.dart`](lib/src/catalog.dart) | Detection, descriptors, and the supported format catalog |
 | [`lib/src/formats/`](lib/src/formats/)                                                      | Readers and destination-owned output policies            |
 | [`lib/src/formats.dart`](lib/src/formats.dart)                                              | Format and lazy preview contracts shared by frontends    |
@@ -386,3 +392,9 @@ The library performs no I/O. Invalid input throws `ParseError`; ambiguous
 blank-line-separated input throws `AmbiguousColumnsError`, whose `candidates`
 list lets you offer a choice and retry with `columns: N`. Returned output has
 no trailing newline; the CLI adds one when printing.
+
+Constructed tables can supply `columnAlignments`, a list of `ColumnAlignment`
+values (`unspecified`, `left`, `center`, or `right`). Each alignment applies to
+the header and body of its column. The immutable list is padded with
+`unspecified` to match the normalized table width; excess entries throw
+`ArgumentError`. Unspecified alignment leaves the destination's default intact.
